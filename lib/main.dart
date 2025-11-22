@@ -9,8 +9,8 @@ void main() async {
   
   // Initialize Supabase (Replace with your actual keys)
   await Supabase.initialize(
-    url: 'YOUR_SUPABASE_URL',
-    anonKey: 'YOUR_SUPABASE_ANON_KEY',
+    url: 'https://qtocjhbqvfbydvzdawcr.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF0b2NqaGJxdmZieWR2emRhd2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNDk3OTYsImV4cCI6MjA3NzgyNTc5Nn0.7iyhBYKsrvGWHIzV3mnP5blomcibLK9II_B2DjNzaV8',
   );
 
   runApp(const MyApp());

@@ -1,8 +1,8 @@
 import 'package:latlong2/latlong.dart';
 import '../models/faculty_model.dart';
 
-// Expanded Graph representing UPM Faculties
-// In a real app, coordinates must be precise.
+// Graph representing UPM Faculties
+// Weights are approximate distances in km
 final Map<String, List<Edge>> graph = {
   "FSKTM": [Edge("FP", 0.5), Edge("Library", 0.8)],
   "FP": [Edge("FSKTM", 0.5), Edge("FEP", 0.4), Edge("Library", 1.0)],
@@ -13,24 +13,33 @@ final Map<String, List<Edge>> graph = {
 
 class Edge {
   final String to;
-  final double weight; // Distance in km
+  final double weight;
   Edge(this.to, this.weight);
 }
 
+// --- Helper Functions Required by Report Screen ---
+
 // Get Faculty Name by ID
 String getFacultyName(String id) {
-  final node = facultyNodes.firstWhere((n) => n.id == id, orElse: () => FacultyNode(id, "Unknown", 0, 0));
-  return node.name;
+  try {
+    final node = facultyNodes.firstWhere((n) => n.id == id);
+    return node.name;
+  } catch (e) {
+    return "Unknown Location";
+  }
 }
 
-// Find nearest faculty to a coordinate (Linear search)
+// Find nearest faculty to a coordinate
 String findNearestFacultyId(LatLng point) {
+  if (facultyNodes.isEmpty) return "FSKTM"; // Default fallback
+
   double minDistance = double.infinity;
   String nearestId = facultyNodes.first.id;
 
   for (var node in facultyNodes) {
-    // Simple Euclidean distance for mockup (use Distance().as(LengthUnit.Meter, ...) for real app)
-    double dist = (point.latitude - node.latitude).abs() + (point.longitude - node.longitude).abs();
+    // Simple distance calculation (abs diff)
+    double dist = (point.latitude - node.latitude).abs() + 
+                  (point.longitude - node.longitude).abs();
     if (dist < minDistance) {
       minDistance = dist;
       nearestId = node.id;
@@ -39,38 +48,45 @@ String findNearestFacultyId(LatLng point) {
   return nearestId;
 }
 
-// Dijkstra Algorithm
+// --- Dijkstra Algorithm ---
+
 List<String> dijkstra(String start, String end) {
   final dist = <String, double>{};
   final prev = <String, String?>{};
   final unvisited = <String>{};
 
+  // Initialize
   for (var node in graph.keys) {
     dist[node] = double.infinity;
     prev[node] = null;
     unvisited.add(node);
   }
   
-  // Handle case where start/end aren't in graph (fallback)
-  if (!graph.containsKey(start) || !graph.containsKey(end)) return [];
-
-  dist[start] = 0;
+  // Fallback if start/end not in graph
+  if (!graph.containsKey(start)) {
+    // If start node isn't in graph, try to map it to FSKTM or add logic
+    dist["FSKTM"] = 0; 
+  } else {
+    dist[start] = 0;
+  }
 
   while (unvisited.isNotEmpty) {
     // Get node with smallest distance
     String current = unvisited.reduce((a, b) => dist[a]! < dist[b]! ? a : b);
     
-    if (dist[current] == double.infinity) break; // No path
+    if (dist[current] == double.infinity) break;
     unvisited.remove(current);
 
     if (current == end) break;
 
-    for (var edge in graph[current]!) {
-      if (unvisited.contains(edge.to)) {
-        double alt = dist[current]! + edge.weight;
-        if (alt < dist[edge.to]!) {
-          dist[edge.to] = alt;
-          prev[edge.to] = current;
+    if (graph.containsKey(current)) {
+      for (var edge in graph[current]!) {
+        if (unvisited.contains(edge.to)) {
+          double alt = dist[current]! + edge.weight;
+          if (alt < dist[edge.to]!) {
+            dist[edge.to] = alt;
+            prev[edge.to] = current;
+          }
         }
       }
     }

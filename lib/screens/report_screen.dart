@@ -1,12 +1,13 @@
+import 'package:latlong2/latlong.dart'; // Crucial for LatLng
+import '../services/dijkstra_service.dart'; // Crucial for findNearestFacultyId
+// Crucial for faculty data
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart'; // AI Package
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart';
-import '../services/dijkstra_service.dart'; // Import the updated service
-import '../models/faculty_model.dart';
+// Import the updated service
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,9 +22,12 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (res.session != null) {
         if (mounted) {
-          // CHANGED: Navigate to the named route '/home' which loads MainContainerScreen
-          Navigator.pushReplacementNamed(context, '/home'); 
+          Navigator.pushReplacementNamed(context, '/home');
         }
+      } else {
+        // No session returned — show details so user can diagnose (e.g. email not confirmed)
+        final msg = res.user == null ? 'Login failed: no session returned' : 'Login completed but no session';
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       }
     } on AuthException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -37,12 +39,29 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _register() async {
-    await Supabase.instance.client.auth.signUp(
-      email: _email.text,
-      password: _password.text,
-    );
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Account created')));
+    setState(() => _loading = true);
+    try {
+      final res = await Supabase.instance.client.auth.signUp(
+        email: _email.text.trim(),
+        password: _password.text.trim(),
+      );
+
+      // If session is returned, user is signed in immediately. Otherwise, they may need to confirm email.
+      if (res.session != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account created — logged in')));
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      } else {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account created — check your email to confirm')));
+      }
+    } on AuthException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registration failed')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override

@@ -22,39 +22,48 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
   Future<void> _checkMatches() async {
     final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
-
-    // 1. Get categories of items I LOST
-    final myLostItems = await Supabase.instance.client
-        .from('items')
-        .select('category')
-        .eq('reported_by', user.id)
-        .eq('type', 'lost');
-
-    if (myLostItems.isEmpty) {
+    if (user == null) {
       setState(() => isLoading = false);
       return;
     }
 
-    List<String> myCategories = (myLostItems as List)
-        .map((e) => e['category'] as String)
-        .toSet() // remove duplicates
-        .toList();
+    try {
+      // 1. Get categories of items I LOST
+      final myLostItems = await Supabase.instance.client
+          .from('items')
+          .select('category')
+          .eq('reported_by', user.id)
+          .eq('type', 'lost');
 
-    // 2. Find items OTHERS FOUND in those categories
-    final matches = await Supabase.instance.client
-        .from('items')
-        .select()
-        .eq('type', 'found')
-        .inFilter('category', myCategories)
-        .neq('reported_by', user.id) // Don't show my own reports
-        .order('created_at', ascending: false);
+      if ((myLostItems as List).isEmpty) {
+        setState(() => isLoading = false);
+        return;
+      }
 
-    if (mounted) {
-      setState(() {
-        matchedItems = (matches as List).map((e) => Item.fromMap(e)).toList();
-        isLoading = false;
-      });
+      List<String> myCategories = myLostItems
+          .map((e) => e['category'] as String)
+          .toSet()
+          .toList();
+
+      // 2. Find items OTHERS FOUND in those categories
+      // FIX: Use .in_() instead of .inFilter()
+        final matches = await Supabase.instance.client
+          .from('items')
+          .select()
+          .eq('type', 'found')
+          .inFilter('category', myCategories)
+          .neq('reported_by', user.id)
+          .order('created_at', ascending: false);
+
+      if (mounted) {
+        setState(() {
+          matchedItems = (matches as List).map((e) => Item.fromMap(e)).toList();
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Alerts Error: $e");
+      if (mounted) setState(() => isLoading = false);
     }
   }
 

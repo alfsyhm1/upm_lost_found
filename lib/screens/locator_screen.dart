@@ -3,7 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/item_model.dart';
-//import '../services/item_detail_screen.dart';
+import 'item_detail_screen.dart';
 
 class LocatorScreen extends StatefulWidget {
   const LocatorScreen({super.key});
