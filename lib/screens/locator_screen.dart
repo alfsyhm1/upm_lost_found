@@ -5,75 +5,68 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/item_model.dart';
 import 'item_detail_screen.dart';
 
-class LocatorScreen extends StatefulWidget {
+class LocatorScreen extends StatelessWidget {
   const LocatorScreen({super.key});
 
   @override
-  State<LocatorScreen> createState() => _LocatorScreenState();
-}
-
-class _LocatorScreenState extends State<LocatorScreen> {
-  List<Item> items = [];
-  
-  // UPM Serdang approximate center
-  final LatLng _center = LatLng(2.9926, 101.7079); 
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchItems();
-  }
-
-  Future<void> _fetchItems() async {
-    final response = await Supabase.instance.client
-        .from('items')
-        .select()
-        .not('location_lat', 'is', null); // Only get items with location
-    
-    if (mounted) {
-      setState(() {
-        items = (response as List).map((e) => Item.fromMap(e)).toList();
-      });
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // UPM Serdang Center
+    final LatLng center = LatLng(2.9926, 101.7079); 
+
+    final stream = Supabase.instance.client
+        .from('items')
+        .stream(primaryKey: ['id'])
+        .order('created_at');
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Live Item Locator")),
-      body: FlutterMap(
-        options: MapOptions(
-          initialCenter: _center,
-          initialZoom: 15.0,
-        ),
-        children: [
-          TileLayer(
-            urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-            userAgentPackageName: 'com.example.upm_lost_found',
-          ),
-          MarkerLayer(
-            markers: items.map((item) {
+      appBar: AppBar(title: const Text("Live Locator")),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: stream,
+        builder: (context, snapshot) {
+          List<Marker> markers = [];
+          
+          if (snapshot.hasData) {
+            final items = snapshot.data!.map((e) => Item.fromMap(e)).toList();
+            
+            markers = items
+                .where((item) => item.locationLat != null && item.locationLng != null)
+                .map((item) {
               return Marker(
-                point: LatLng(item.locationLat!, item.locationLng!), // Ensure model has double? lat/lng
-                width: 40,
-                height: 40,
+                point: LatLng(item.locationLat!, item.locationLng!),
+                width: 45,
+                height: 45,
                 child: GestureDetector(
                   onTap: () {
                     showModalBottomSheet(
-                      context: context, 
-                      builder: (_) => _ItemPreviewSheet(item: item)
+                      context: context,
+                      builder: (_) => _ItemPreviewSheet(item: item),
                     );
                   },
                   child: Icon(
-                    Icons.location_on, 
+                    Icons.location_pin,
                     color: item.type == 'lost' ? Colors.red : Colors.blue,
-                    size: 40,
+                    size: 45,
+                    shadows: const [Shadow(blurRadius: 10, color: Colors.black45)],
                   ),
                 ),
               );
-            }).toList(),
-          ),
-        ],
+            }).toList();
+          }
+
+          return FlutterMap(
+            options: MapOptions(
+              initialCenter: center,
+              initialZoom: 15.5,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                userAgentPackageName: 'com.example.upm_lost_found',
+              ),
+              MarkerLayer(markers: markers),
+            ],
+          );
+        },
       ),
     );
   }
@@ -87,13 +80,25 @@ class _ItemPreviewSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      height: 200,
+      height: 220,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(item.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          Text(item.type.toUpperCase(), style: TextStyle(color: item.type == 'lost' ? Colors.red : Colors.blue)),
-          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: Text(item.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: item.type == 'lost' ? Colors.red.shade100 : Colors.blue.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(item.type.toUpperCase(), 
+                  style: TextStyle(color: item.type == 'lost' ? Colors.red : Colors.blue, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Text(item.description, maxLines: 2, overflow: TextOverflow.ellipsis),
           const Spacer(),
           SizedBox(
@@ -102,8 +107,8 @@ class _ItemPreviewSheet extends StatelessWidget {
               onPressed: () {
                 Navigator.pop(context);
                 Navigator.push(context, MaterialPageRoute(builder: (_) => ItemDetailScreen(item: item)));
-              }, 
-              child: const Text("View Details")
+              },
+              child: const Text("View Details"),
             ),
           )
         ],
