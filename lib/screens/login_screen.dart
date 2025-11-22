@@ -16,17 +16,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     setState(() => _loading = true);
-    final res = await Supabase.instance.client.auth.signInWithPassword(
-      email: _email.text,
-      password: _password.text,
-    );
-    setState(() => _loading = false);
-    if (res.session != null) {
-      Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => const HomeScreen()));
-    } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Login failed')));
+    try {
+      final res = await Supabase.instance.client.auth.signInWithPassword(
+        email: _email.text.trim(),
+        password: _password.text.trim(),
+      );
+      if (res.session != null) {
+        if (mounted) {
+          // CHANGED: Navigate to the named route '/home' which loads MainContainerScreen
+          Navigator.pushReplacementNamed(context, '/home'); 
+        }
+      }
+    } on AuthException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Login failed')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
