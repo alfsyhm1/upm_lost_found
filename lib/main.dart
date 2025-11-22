@@ -1,0 +1,27 @@
+import 'package:flutter/material.dart';
+import 'screens/home_screen.dart';
+import 'screens/route_map_screen.dart'; 
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'UPM Lost and Found',
+      theme: ThemeData(
+        primarySwatch: Colors.green,
+      ),
+      // 👇 Optional: define routes so you can call it easily
+      routes: {
+        '/': (context) => const HomeScreen(),
+        '/routeMap': (context) => const RouteMap(startId: 'FSKTM', endId: 'FP'),
+      },
+    );
+  }
+}
