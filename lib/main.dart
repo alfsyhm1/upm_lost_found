@@ -1,8 +1,18 @@
 import 'package:flutter/material.dart';
-import 'screens/home_screen.dart';
-import 'screens/route_map_screen.dart'; 
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'screens/login_screen.dart';
+import 'screens/main_container_screen.dart';
+import 'screens/splash_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Supabase (Replace with your actual keys)
+  await Supabase.initialize(
+    url: 'YOUR_SUPABASE_URL',
+    anonKey: 'YOUR_SUPABASE_ANON_KEY',
+  );
+
   runApp(const MyApp());
 }
 
@@ -13,14 +23,32 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'UPM Lost and Found',
+      title: 'UPM Lost & Found',
       theme: ThemeData(
-        primarySwatch: Colors.green,
+        // UPM Red & White Theme
+        primaryColor: const Color(0xFFB30000), // UPM Red
+        scaffoldBackgroundColor: Colors.white,
+        colorScheme: ColorScheme.fromSwatch().copyWith(
+          primary: const Color(0xFFB30000),
+          secondary: const Color(0xFFFFCDD2),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFFB30000),
+          foregroundColor: Colors.white,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFB30000),
+            foregroundColor: Colors.white,
+          ),
+        ),
+        useMaterial3: true,
       ),
-      // 👇 Optional: define routes so you can call it easily
+      initialRoute: '/',
       routes: {
-        '/': (context) => const HomeScreen(),
-        '/routeMap': (context) => const RouteMap(startId: 'FSKTM', endId: 'FP'),
+        '/': (context) => const SplashScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/home': (context) => const MainContainerScreen(),
       },
     );
   }
