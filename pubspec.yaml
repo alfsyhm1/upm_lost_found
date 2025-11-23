@@ -44,6 +44,8 @@ dependencies:
   intl: ^0.19.0
   permission_handler: ^11.3.0
   url_launcher: ^6.2.5
+  geocoding: ^3.0.0       # For readable addresses
+  palette_generator: ^0.3.3 # To detect colors from images
 
 dev_dependencies:
   flutter_test:

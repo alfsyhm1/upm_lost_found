@@ -10,6 +10,7 @@ class Item {
   final String locationName;
   final String? dropOffNode;
   final String? reportedBy;
+  final String? contactNumber; // <--- Added this
   final DateTime createdAt;
 
   Item({
@@ -24,22 +25,24 @@ class Item {
     required this.locationName,
     this.dropOffNode,
     this.reportedBy,
+    this.contactNumber, // <--- Added this
     required this.createdAt,
   });
 
   factory Item.fromMap(Map<String, dynamic> data) {
     return Item(
       id: data['id']?.toString() ?? '',
-      title: data['title'] ?? 'No Title',
+      title: data['title'] ?? 'Unknown Item',
       description: data['description'] ?? '',
       type: data['type'] ?? 'lost',
       imageUrl: data['image_url'] ?? '',
       category: data['category'] ?? 'Other',
-      locationLat: data['location_lat'] != null ? (data['location_lat'] as num).toDouble() : null,
-      locationLng: data['location_lng'] != null ? (data['location_lng'] as num).toDouble() : null,
+      locationLat: data['location_lat']?.toDouble(),
+      locationLng: data['location_lng']?.toDouble(),
       locationName: data['location_name'] ?? '',
       dropOffNode: data['drop_off_node'],
       reportedBy: data['reported_by'],
+      contactNumber: data['contact_number'], // <--- Mapping from Database
       createdAt: data['created_at'] != null 
           ? DateTime.parse(data['created_at']) 
           : DateTime.now(),

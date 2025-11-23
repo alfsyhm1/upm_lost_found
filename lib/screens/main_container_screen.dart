@@ -15,25 +15,34 @@ class MainContainerScreen extends StatefulWidget {
 class _MainContainerScreenState extends State<MainContainerScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _pages = [
-    const HomeScreen(),
-    const ReportScreen(), // The "Plus" button page
-    const LocatorScreen(),
-    const AlertsScreen(),
-    const ProfileScreen(),
-  ];
+  // This function builds ONLY the screen you selected.
+  // It prevents the Map and other heavy screens from loading in the background.
+  Widget _getPage(int index) {
+    switch (index) {
+      case 0: return const HomeScreen();
+      case 1: return const ReportScreen();
+      case 2: return const LocatorScreen();
+      case 3: return const AlertsScreen();
+      case 4: return const ProfileScreen();
+      default: return const HomeScreen();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
+      // We use _getPage instead of IndexedStack to save memory
+      body: _getPage(_currentIndex),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
-          setState(() => _currentIndex = index);
+          // If user taps "Report" (index 1), push it as a new screen instead of switching tabs
+          // This keeps the back button working correctly.
+          if (index == 1) {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportScreen()));
+          } else {
+            setState(() => _currentIndex = index);
+          }
         },
         indicatorColor: Colors.red.shade100,
         destinations: const [
