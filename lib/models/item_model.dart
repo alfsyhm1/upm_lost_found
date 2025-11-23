@@ -10,7 +10,7 @@ class Item {
   final String locationName;
   final String? dropOffNode;
   final String? reportedBy;
-  final String? contactNumber; // <--- Added this
+  final String? contactNumber; // <--- This is crucial for the smart features
   final DateTime createdAt;
 
   Item({
@@ -25,7 +25,7 @@ class Item {
     required this.locationName,
     this.dropOffNode,
     this.reportedBy,
-    this.contactNumber, // <--- Added this
+    this.contactNumber,
     required this.createdAt,
   });
 
@@ -37,12 +37,12 @@ class Item {
       type: data['type'] ?? 'lost',
       imageUrl: data['image_url'] ?? '',
       category: data['category'] ?? 'Other',
-      locationLat: data['location_lat']?.toDouble(),
-      locationLng: data['location_lng']?.toDouble(),
+      locationLat: data['location_lat'] != null ? (data['location_lat'] as num).toDouble() : null,
+      locationLng: data['location_lng'] != null ? (data['location_lng'] as num).toDouble() : null,
       locationName: data['location_name'] ?? '',
       dropOffNode: data['drop_off_node'],
       reportedBy: data['reported_by'],
-      contactNumber: data['contact_number'], // <--- Mapping from Database
+      contactNumber: data['contact_number'], // <--- Map this field
       createdAt: data['created_at'] != null 
           ? DateTime.parse(data['created_at']) 
           : DateTime.now(),
