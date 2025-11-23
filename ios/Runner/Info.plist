@@ -45,5 +45,15 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+    <string>We need camera access to take photos of lost/found items for AI recognition.</string>
+
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>We need access to your photo library to upload images of items.</string>
+
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>We need your location to tag reports and suggest drop-off routes.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>We need your location to suggest drop-off routes.</string>
 </dict>
 </plist>
