@@ -3,7 +3,7 @@ class Item {
   final String title;
   final String description;
   final String type; // 'lost' or 'found'
-  final List<String> imageUrls; // Changed from String to List<String>
+  final List<String> imageUrls;
   final String category;
   final double? locationLat;
   final double? locationLng;
@@ -11,9 +11,10 @@ class Item {
   final String? dropOffNode;
   final String? contactNumber;
   final String? reportedBy;
-  final String? reportedUsername; // New
-  final String? verificationQuestion; // New
-  final String? verificationAnswer; // New
+  final String? reportedUsername;
+  final String? verificationQuestion;
+  final List<String> verificationOptions; // <--- This was missing!
+  final String? verificationAnswer;
   final DateTime createdAt;
 
   Item({
@@ -31,6 +32,7 @@ class Item {
     this.reportedBy,
     this.reportedUsername,
     this.verificationQuestion,
+    required this.verificationOptions, // <--- Add to constructor
     this.verificationAnswer,
     required this.createdAt,
   });
@@ -41,7 +43,6 @@ class Item {
       title: data['title'] ?? 'Unknown Item',
       description: data['description'] ?? '',
       type: data['type'] ?? 'lost',
-      // Handles both old (single string) and new (list) image formats
       imageUrls: data['image_urls'] != null 
           ? List<String>.from(data['image_urls']) 
           : (data['image_url'] != null ? [data['image_url']] : []), 
@@ -54,6 +55,12 @@ class Item {
       reportedBy: data['reported_by'],
       reportedUsername: data['reported_username'],
       verificationQuestion: data['verification_question'],
+      
+      // <--- Parse the options list safely:
+      verificationOptions: data['verification_options'] != null 
+          ? List<String>.from(data['verification_options']) 
+          : [], 
+          
       verificationAnswer: data['verification_answer'],
       createdAt: data['created_at'] != null 
           ? DateTime.parse(data['created_at']) 

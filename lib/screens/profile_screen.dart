@@ -14,6 +14,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final user = Supabase.instance.client.auth.currentUser;
   late ConfettiController _confettiController;
   String _username = "Loading...";
+  String _emoji = "👤"; // Default
+
+  final List<String> _emojis = ["👤", "🐱", "🐶", "🦊", "🦁", "🐸", "🦄", "🤖", "👽", "👻"];
 
   @override
   void initState() {
@@ -22,100 +25,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fetchProfile();
   }
 
-  @override
-  void dispose() {
-    _confettiController.dispose();
-    super.dispose();
-  }
-
   Future<void> _fetchProfile() async {
     try {
-      final data = await Supabase.instance.client
-          .from('profiles')
-          .select('username')
-          .eq('id', user!.id)
-          .maybeSingle();
-      if (data != null && data['username'] != null) {
-        setState(() => _username = data['username']);
-      } else {
-        setState(() => _username = "Set Username");
+      final data = await Supabase.instance.client.from('profiles').select().eq('id', user!.id).maybeSingle();
+      if (data != null) {
+        setState(() {
+          _username = data['username'] ?? "Set Username";
+          _emoji = data['avatar_emoji'] ?? "👤";
+        });
       }
-    } catch (e) {
-      setState(() => _username = "User");
-    }
+    } catch (_) {}
   }
 
-  // --- NEW: Update Username Feature ---
-  Future<void> _updateUsername() async {
-    String? newName;
-    await showDialog(
+  Future<void> _updateEmoji() async {
+    await showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Set Username"),
-        content: TextField(
-          onChanged: (v) => newName = v,
-          decoration: const InputDecoration(hintText: "e.g. Ali UPM"),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
-          TextButton(
-            onPressed: () async {
-              if (newName != null && newName!.isNotEmpty) {
-                await Supabase.instance.client.from('profiles').upsert({
-                  'id': user!.id,
-                  'username': newName,
-                });
-                setState(() => _username = newName!);
-                if (mounted) Navigator.pop(ctx);
-              }
-            },
-            child: const Text("Save"),
-          ),
-        ],
+      builder: (ctx) => GridView.count(
+        crossAxisCount: 5,
+        children: _emojis.map((e) => GestureDetector(
+          onTap: () async {
+            setState(() => _emoji = e);
+            Navigator.pop(ctx);
+            await Supabase.instance.client.from('profiles').upsert({'id': user!.id, 'avatar_emoji': e});
+          },
+          child: Center(child: Text(e, style: const TextStyle(fontSize: 30))),
+        )).toList(),
       ),
     );
   }
 
-  Future<void> _markAsReturned(String itemId) async {
+  Future<void> _markAsReturned(Item item) async {
+    // Logic: If 'lost', status becomes 'Found'. If 'found', status becomes 'Returned'.
+    String statusText = item.type == 'lost' ? "FOUND" : "RETURNED";
+    
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Mark as Resolved?"),
-        content: const Text("Is this item back with its owner? This will remove it from the list."),
+        title: Text("Mark as $statusText?"),
+        content: const Text("This will resolve the item and remove it from the list."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true), 
-            child: const Text("Yes, Resolved!", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Confirm")),
         ],
       ),
     );
 
     if (confirm == true) {
       _confettiController.play();
-      await Supabase.instance.client.from('items').delete().eq('id', itemId);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Great job! Item resolved! 🎉"), backgroundColor: Colors.green)
-        );
-      }
+      await Supabase.instance.client.from('items').delete().eq('id', item.id);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Item marked as $statusText! 🎉")));
     }
-  }
-
-  Future<void> _logout() async {
-    await Supabase.instance.client.auth.signOut();
-    if (mounted) Navigator.pushReplacementNamed(context, '/login');
   }
 
   @override
   Widget build(BuildContext context) {
-    final myItemsStream = Supabase.instance.client
-        .from('items')
-        .stream(primaryKey: ['id'])
-        .eq('reported_by', user?.id ?? '')
-        .order('created_at', ascending: false);
+    final myItemsStream = Supabase.instance.client.from('items').stream(primaryKey: ['id']).eq('reported_by', user?.id ?? '').order('created_at');
 
     return Stack(
       alignment: Alignment.topCenter,
@@ -124,117 +88,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
           appBar: AppBar(title: const Text("My Profile")),
           body: Column(
             children: [
-              // Profile Header
               Container(
                 padding: const EdgeInsets.all(20),
-                color: Colors.red.shade50,
+                color: Colors.grey.shade100,
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      radius: 35, 
-                      backgroundColor: const Color(0xFFB30000), 
-                      child: Text(user?.email?.substring(0,1).toUpperCase() ?? "U", style: const TextStyle(fontSize: 30, color: Colors.white))
+                    GestureDetector(
+                      onTap: _updateEmoji,
+                      child: CircleAvatar(radius: 35, backgroundColor: Colors.white, child: Text(_emoji, style: const TextStyle(fontSize: 35))),
                     ),
                     const SizedBox(width: 15),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Username with Edit capability
-                          GestureDetector(
-                            onTap: _updateUsername,
-                            child: Row(
-                              children: [
-                                Text(_username, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                                const SizedBox(width: 8),
-                                const Icon(Icons.edit, size: 16, color: Colors.grey),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(user?.email ?? "", style: const TextStyle(fontSize: 14, color: Colors.grey)),
-                        ],
-                      ),
-                    ),
-                    IconButton(onPressed: _logout, icon: const Icon(Icons.logout), color: Colors.red),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(_username, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      Text(user?.email ?? "", style: const TextStyle(color: Colors.grey)),
+                    ])),
+                    IconButton(onPressed: () => Supabase.instance.client.auth.signOut().then((_) => Navigator.pushReplacementNamed(context, '/login')), icon: const Icon(Icons.logout, color: Colors.red)),
                   ],
                 ),
               ),
-              
-              const Padding(
-                padding: EdgeInsets.all(15.0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text("My Reports", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                ),
-              ),
-              
-              // List
               Expanded(
                 child: StreamBuilder(
                   stream: myItemsStream,
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                    final data = snapshot.data as List<dynamic>;
-                    final items = data.map((e) => Item.fromMap(e)).toList();
-
-                    if (items.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.history, size: 60, color: Colors.grey.shade300),
-                            const SizedBox(height: 10),
-                            const Text("No reports yet."),
-                          ],
-                        ),
-                      );
-                    }
-
+                    final items = (snapshot.data as List).map((e) => Item.fromMap(e)).toList();
                     return ListView.builder(
                       itemCount: items.length,
-                      itemBuilder: (context, index) {
-                        final item = items[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          child: ListTile(
-                            leading: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: item.imageUrls.isNotEmpty
-                                 ? Image.network(item.imageUrls.first, width: 50, height: 50, fit: BoxFit.cover)
-                                 : Container(color: Colors.grey.shade200, width: 50, height: 50, child: const Icon(Icons.image)),
-                            ),
-                            title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text(item.type.toUpperCase(), style: TextStyle(color: item.type == 'lost' ? Colors.red : Colors.blue, fontSize: 12)),
-                            trailing: ElevatedButton.icon(
-                              onPressed: () => _markAsReturned(item.id),
-                              icon: const Icon(Icons.check, size: 16),
-                              label: const Text("Resolved"),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green.shade50,
-                                foregroundColor: Colors.green.shade700,
-                                elevation: 0,
-                              ),
-                            ),
+                      itemBuilder: (ctx, i) {
+                        final item = items[i];
+                        return ListTile(
+                          title: Text(item.title),
+                          subtitle: Text(item.type.toUpperCase()),
+                          trailing: ElevatedButton(
+                            onPressed: () => _markAsReturned(item),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade100, foregroundColor: Colors.green.shade800, elevation: 0),
+                            child: Text(item.type == 'lost' ? "Mark Found" : "Mark Returned"),
                           ),
                         );
                       },
                     );
                   },
                 ),
-              ),
+              )
             ],
           ),
         ),
-        
-        ConfettiWidget(
-          confettiController: _confettiController,
-          blastDirectionality: BlastDirectionality.explosive,
-          shouldLoop: false,
-          colors: const [Colors.green, Colors.blue, Colors.pink, Colors.orange],
-          numberOfParticles: 20,
-          gravity: 0.3,
-        ),
+        ConfettiWidget(confettiController: _confettiController, blastDirectionality: BlastDirectionality.explosive, numberOfParticles: 20),
       ],
     );
   }

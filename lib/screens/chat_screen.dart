@@ -29,7 +29,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _messagesStream = Supabase.instance.client
         .from('messages')
         .stream(primaryKey: ['id'])
-        .order('created_at')
+        .order('created_at', ascending: false) // FIX 1: Newest first for logic
         .map((data) => data.where((msg) => 
             (msg['sender_id'] == _myId && msg['receiver_id'] == widget.otherUserId) ||
             (msg['sender_id'] == widget.otherUserId && msg['receiver_id'] == _myId)
@@ -61,12 +61,25 @@ class _ChatScreenState extends State<ChatScreen> {
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 final messages = snapshot.data!;
+                
                 return ListView.builder(
+                  reverse: true, // FIX 2: Start from bottom
                   padding: const EdgeInsets.all(10),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
                     final isMe = msg['sender_id'] == _myId;
+                    
+                    // Optional: Show Item Context Card
+                    if (msg['content'].toString().startsWith("👋 Hi, I am interested")) {
+                       return Container(
+                         margin: const EdgeInsets.only(bottom: 10),
+                         padding: const EdgeInsets.all(10),
+                         decoration: BoxDecoration(color: Colors.yellow.shade100, borderRadius: BorderRadius.circular(10)),
+                         child: Text(msg['content'], style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+                       );
+                    }
+
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
