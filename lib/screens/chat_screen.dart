@@ -5,9 +5,14 @@ import 'package:timeago/timeago.dart' as timeago;
 class ChatScreen extends StatefulWidget {
   final String otherUserId;
   final String otherUserName;
-  final String? itemId; // Optional: Link to specific item
+  final String? itemId;
 
-  const ChatScreen({super.key, required this.otherUserId, required this.otherUserName, this.itemId});
+  const ChatScreen({
+    super.key, 
+    required this.otherUserId, 
+    required this.otherUserName, 
+    this.itemId
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -21,7 +26,6 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    // Real-time listener for messages between these two users
     _messagesStream = Supabase.instance.client
         .from('messages')
         .stream(primaryKey: ['id'])
@@ -40,7 +44,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await Supabase.instance.client.from('messages').insert({
       'sender_id': _myId,
       'receiver_id': widget.otherUserId,
-      'item_id': widget.itemId != null ? int.parse(widget.itemId!) : null,
+      'item_id': widget.itemId, // Passes UUID string directly
       'content': text,
     });
   }
@@ -57,7 +61,6 @@ class _ChatScreenState extends State<ChatScreen> {
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 final messages = snapshot.data!;
-                
                 return ListView.builder(
                   padding: const EdgeInsets.all(10),
                   itemCount: messages.length,

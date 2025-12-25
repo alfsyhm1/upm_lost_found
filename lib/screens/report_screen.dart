@@ -162,38 +162,55 @@ class _ReportScreenState extends State<ReportScreen> {
     
     try {
       final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) throw "User not logged in";
       
-      // Upload All Images
+      // Upload Images
       List<String> uploadedUrls = [];
-      for (var img in _images) {
-        final path = 'images/${DateTime.now().millisecondsSinceEpoch}_${uploadedUrls.length}.jpg';
-        await Supabase.instance.client.storage.from('images').upload(path, img);
-        uploadedUrls.add(Supabase.instance.client.storage.from('images').getPublicUrl(path));
+      if (_images.isNotEmpty) {
+        for (var img in _images) {
+          final path = 'images/${user.id}_${DateTime.now().millisecondsSinceEpoch}_${uploadedUrls.length}.jpg';
+          await Supabase.instance.client.storage.from('images').upload(path, img);
+          uploadedUrls.add(Supabase.instance.client.storage.from('images').getPublicUrl(path));
+        }
       }
 
-      // Get Username
-      final profile = await Supabase.instance.client.from('profiles').select('username').eq('id', user!.id).single();
-      String username = profile['username'] ?? "Anonymous";
+      // --- FIX STARTS HERE ---
+      // Safely fetch username. Use .maybeSingle() instead of .single() to prevent crashing
+      String username = "Anonymous";
+      try {
+        final profile = await Supabase.instance.client
+            .from('profiles')
+            .select('username')
+            .eq('id', user.id)
+            .maybeSingle(); // <--- This prevents the error
+        
+        if (profile != null && profile['username'] != null) {
+          username = profile['username'];
+        }
+      } catch (e) {
+        debugPrint("Could not fetch username: $e");
+      }
+      // --- FIX ENDS HERE ---
 
       await Supabase.instance.client.from('items').insert({
         'title': _titleController.text,
         'description': _descController.text,
         'type': _type,
         'category': _category,
-        'image_urls': uploadedUrls, // Array
+        'image_urls': uploadedUrls,
         'contact_number': _contactController.text,
         'location_lat': _lat,
         'location_lng': _lng,
         'location_name': _locationController.text,
         'reported_by': user.id,
-        'reported_username': username,
+        'reported_username': username, // Saves "Anonymous" if no profile exists
         'verification_question': _questionController.text.isEmpty ? null : _questionController.text,
         'verification_answer': _answerController.text.isEmpty ? null : _answerController.text,
       });
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Published successfully!")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Report Published!")));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));

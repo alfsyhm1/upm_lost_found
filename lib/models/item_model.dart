@@ -3,16 +3,17 @@ class Item {
   final String title;
   final String description;
   final String type; // 'lost' or 'found'
-  final List<String> imageUrls; // <--- This is the key fix (List instead of String)
+  final List<String> imageUrls; // Changed from String to List<String>
   final String category;
   final double? locationLat;
   final double? locationLng;
   final String locationName;
+  final String? dropOffNode;
   final String? contactNumber;
   final String? reportedBy;
-  final String? reportedUsername;
-  final String? verificationQuestion;
-  final String? verificationAnswer;
+  final String? reportedUsername; // New
+  final String? verificationQuestion; // New
+  final String? verificationAnswer; // New
   final DateTime createdAt;
 
   Item({
@@ -25,6 +26,7 @@ class Item {
     this.locationLat,
     this.locationLng,
     required this.locationName,
+    this.dropOffNode,
     this.contactNumber,
     this.reportedBy,
     this.reportedUsername,
@@ -39,7 +41,7 @@ class Item {
       title: data['title'] ?? 'Unknown Item',
       description: data['description'] ?? '',
       type: data['type'] ?? 'lost',
-      // Handle both old single image and new list format safely
+      // Handles both old (single string) and new (list) image formats
       imageUrls: data['image_urls'] != null 
           ? List<String>.from(data['image_urls']) 
           : (data['image_url'] != null ? [data['image_url']] : []), 
@@ -47,6 +49,7 @@ class Item {
       locationLat: data['location_lat']?.toDouble(),
       locationLng: data['location_lng']?.toDouble(),
       locationName: data['location_name'] ?? '',
+      dropOffNode: data['drop_off_node'],
       contactNumber: data['contact_number'],
       reportedBy: data['reported_by'],
       reportedUsername: data['reported_username'],
