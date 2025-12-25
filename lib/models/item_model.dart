@@ -3,14 +3,16 @@ class Item {
   final String title;
   final String description;
   final String type; // 'lost' or 'found'
-  final String imageUrl;
+  final List<String> imageUrls; // <--- This is the key fix (List instead of String)
   final String category;
   final double? locationLat;
   final double? locationLng;
   final String locationName;
-  final String? dropOffNode;
+  final String? contactNumber;
   final String? reportedBy;
-  final String? contactNumber; // <--- This is crucial for the smart features
+  final String? reportedUsername;
+  final String? verificationQuestion;
+  final String? verificationAnswer;
   final DateTime createdAt;
 
   Item({
@@ -18,14 +20,16 @@ class Item {
     required this.title,
     required this.description,
     required this.type,
-    required this.imageUrl,
+    required this.imageUrls,
     required this.category,
     this.locationLat,
     this.locationLng,
     required this.locationName,
-    this.dropOffNode,
-    this.reportedBy,
     this.contactNumber,
+    this.reportedBy,
+    this.reportedUsername,
+    this.verificationQuestion,
+    this.verificationAnswer,
     required this.createdAt,
   });
 
@@ -35,14 +39,19 @@ class Item {
       title: data['title'] ?? 'Unknown Item',
       description: data['description'] ?? '',
       type: data['type'] ?? 'lost',
-      imageUrl: data['image_url'] ?? '',
+      // Handle both old single image and new list format safely
+      imageUrls: data['image_urls'] != null 
+          ? List<String>.from(data['image_urls']) 
+          : (data['image_url'] != null ? [data['image_url']] : []), 
       category: data['category'] ?? 'Other',
-      locationLat: data['location_lat'] != null ? (data['location_lat'] as num).toDouble() : null,
-      locationLng: data['location_lng'] != null ? (data['location_lng'] as num).toDouble() : null,
+      locationLat: data['location_lat']?.toDouble(),
+      locationLng: data['location_lng']?.toDouble(),
       locationName: data['location_name'] ?? '',
-      dropOffNode: data['drop_off_node'],
+      contactNumber: data['contact_number'],
       reportedBy: data['reported_by'],
-      contactNumber: data['contact_number'], // <--- Map this field
+      reportedUsername: data['reported_username'],
+      verificationQuestion: data['verification_question'],
+      verificationAnswer: data['verification_answer'],
       createdAt: data['created_at'] != null 
           ? DateTime.parse(data['created_at']) 
           : DateTime.now(),

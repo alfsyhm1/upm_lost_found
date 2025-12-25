@@ -6,10 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import 'package:palette_generator/palette_generator.dart';
-import 'package:latlong2/latlong.dart' as latLng; // Alias to avoid conflicts
+import 'package:latlong2/latlong.dart' as latLng;
 import '../services/dijkstra_service.dart';
-import '../models/item_model.dart';
-import '../screens/item_detail_screen.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -19,39 +17,38 @@ class ReportScreen extends StatefulWidget {
 }
 
 class _ReportScreenState extends State<ReportScreen> {
-  // UI State
-  int _currentStep = 0; // 0 = Selection, 1 = Details
+  int _currentStep = 0;
   String _type = 'found';
+  List<File> _images = []; // Multiple images
   bool _loading = false;
   
-  // Data State
-  File? _image;
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
   final _locationController = TextEditingController();
   final _contactController = TextEditingController();
+  final _questionController = TextEditingController(); // Security Question
+  final _answerController = TextEditingController();   // Security Answer
   
   String _category = 'Other';
   double? _lat;
   double? _lng;
   String? _suggestedDropOff;
-  List<Item> _similarItems = []; // Stores smart matches
-
+  
   final List<String> _categories = ['Electronics', 'Clothing', 'Wallet', 'Keys', 'Documents', 'Accessories', 'Other'];
 
-  // --- STEP 1: SELECTION SCREEN ---
+  // --- STEP 1: SELECTION ---
   Widget _buildSelectionStep() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text("What happened?", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const Text("What do you want to report?", style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
           const SizedBox(height: 40),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _selectionButton("I FOUND\nAN ITEM", Icons.volunteer_activism, Colors.blue, 'found'),
-              _selectionButton("I LOST\nAN ITEM", Icons.search, Colors.red, 'lost'),
+              _selectionButton("Found Item", Icons.volunteer_activism, Colors.blue, 'found'),
+              _selectionButton("Lost Item", Icons.search, Colors.red, 'lost'),
             ],
           ),
         ],
@@ -61,247 +58,142 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Widget _selectionButton(String text, IconData icon, Color color, String type) {
     return GestureDetector(
-      onTap: () => _handleSelection(type),
+      onTap: () {
+        setState(() => _type = type);
+        _pickImages(); // Start by picking images
+      },
       child: Container(
-        width: 150, height: 150,
+        width: 160, height: 160,
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color, width: 2),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 5))],
+          border: Border.all(color: color.withOpacity(0.2), width: 1),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 50, color: color),
-            const SizedBox(height: 10),
-            Text(text, textAlign: TextAlign.center, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+              child: Icon(icon, size: 40, color: color),
+            ),
+            const SizedBox(height: 16),
+            Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ],
         ),
       ),
     );
   }
 
-  Future<void> _handleSelection(String type) async {
-    setState(() => _type = type);
-    if (type == 'found') {
-      // Found something? Take a picture immediately.
-      await _getImageAndAnalyze(ImageSource.camera);
-    } else {
-      // Lost something? Ask if they have a photo.
-      _showLostItemOptions();
-    }
-  }
-
-  Future<void> _showLostItemOptions() async {
-    await showModalBottomSheet(
-      context: context,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(20),
-        height: 200,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Do you have a photo of the lost item?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const Icon(Icons.photo_library, color: Colors.red),
-              title: const Text("Yes, I have an old photo"),
-              onTap: () {
-                Navigator.pop(ctx);
-                _getImageAndAnalyze(ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.edit, color: Colors.grey),
-              title: const Text("No, I'll describe it"),
-              onTap: () {
-                Navigator.pop(ctx);
-                setState(() => _currentStep = 1); 
-                _getSmartLocation(); 
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // --- STEP 2: AI ANALYSIS & MATCHING ---
-  Future<void> _getImageAndAnalyze(ImageSource source) async {
-    final picked = await ImagePicker().pickImage(source: source);
-    if (picked == null) {
-      if (_type == 'lost') {
-        setState(() => _currentStep = 1);
-        _getSmartLocation();
-      }
+  // --- STEP 2: IMAGES & AI ---
+  Future<void> _pickImages() async {
+    final picked = await ImagePicker().pickMultiImage();
+    if (picked.isEmpty) {
+      // If user cancels, proceed to form anyway
+      setState(() => _currentStep = 1);
+      _getSmartLocation();
       return;
     }
 
-    setState(() { _image = File(picked.path); _loading = true; });
+    setState(() {
+      _images = picked.map((e) => File(e.path)).toList();
+      _loading = true;
+    });
 
     try {
-      // 1. AI Labeling
-      final inputImage = InputImage.fromFile(_image!);
+      // Analyze first image for AI
+      final inputImage = InputImage.fromFile(_images.first);
       final labeler = ImageLabeler(options: ImageLabelerOptions(confidenceThreshold: 0.5));
       final labels = await labeler.processImage(inputImage);
       labeler.close();
 
-      // 2. Color Detection
-      final palette = await PaletteGenerator.fromImageProvider(FileImage(_image!));
+      final palette = await PaletteGenerator.fromImageProvider(FileImage(_images.first));
       String colorInfo = "Unknown Color";
       if (palette.dominantColor != null) {
-        colorInfo = palette.dominantColor!.color.computeLuminance() > 0.8 ? "Light/White" : "Dark/Colored";
+        colorInfo = palette.dominantColor!.color.computeLuminance() > 0.5 ? "Light" : "Dark";
       }
-
-      setState(() => _loading = false);
-
-      String detectedLabel = "";
 
       if (labels.isNotEmpty) {
         String detected = labels.first.label;
-        detectedLabel = detected;
-        
-        String aiMessage = _type == 'found' 
-            ? "AI thinks this is a $detected. Is that correct?" 
-            : "Does your lost item look like a $detected?";
-            
-        bool confirm = await _showDialog("AI Smart Scan", aiMessage);
-        
-        if (confirm) {
-          _titleController.text = detected;
-          _descController.text = "Item is $colorInfo. \nAI Tags: ${labels.take(3).map((l) => l.label).join(', ')}";
-          _autoCategorize(detected);
-        }
+        _titleController.text = detected;
+        _descController.text = "Color appears to be $colorInfo. \nTags: ${labels.take(3).map((l) => l.label).join(', ')}";
+        _autoCategorize(detected);
       }
-      
-      // Move to form
-      setState(() => _currentStep = 1);
-      await _getSmartLocation();
-      
-      // 3. PROACTIVE MATCHING: Search DB immediately
-      if (detectedLabel.isNotEmpty) {
-        _checkForSimilarItems(detectedLabel); 
-      }
-
     } catch (e) {
-      setState(() => _loading = false);
       debugPrint("AI Error: $e");
-      setState(() => _currentStep = 1); 
-    }
-  }
-
-  // Matches items intelligently based on title/category
-  Future<void> _checkForSimilarItems(String query) async {
-    String targetType = _type == 'lost' ? 'found' : 'lost'; // Search for the opposite
-    
-    try {
-      final response = await Supabase.instance.client
-          .from('items')
-          .select()
-          .eq('type', targetType)
-          .ilike('title', '%$query%') // Fuzzy search
-          .limit(3);
-
-      if (response.isNotEmpty) {
-        setState(() {
-          _similarItems = (response as List).map((e) => Item.fromMap(e)).toList();
-        });
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Smart Alert: We found potential matches!"),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 5),
-            )
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint("Matching Error: $e");
+    } finally {
+      setState(() {
+        _loading = false;
+        _currentStep = 1;
+      });
+      _getSmartLocation();
     }
   }
 
   void _autoCategorize(String label) {
     label = label.toLowerCase();
-    if (label.contains('phone') || label.contains('laptop')) _category = 'Electronics';
+    if (label.contains('phone') || label.contains('computer')) _category = 'Electronics';
     else if (label.contains('wallet') || label.contains('card')) _category = 'Wallet';
     else if (label.contains('key')) _category = 'Keys';
-    else if (label.contains('bag')) _category = 'Accessories';
-    else if (label.contains('clothing') || label.contains('shirt')) _category = 'Clothing';
   }
 
   Future<void> _getSmartLocation() async {
     if (_locationController.text.isNotEmpty) return;
-
-    setState(() => _loading = true);
     try {
       Position pos = await Geolocator.getCurrentPosition();
       _lat = pos.latitude;
       _lng = pos.longitude;
-
-      // Reverse Geocode to get street name
       List<Placemark> places = await placemarkFromCoordinates(pos.latitude, pos.longitude);
       if (places.isNotEmpty) {
         _locationController.text = "${places.first.name}, ${places.first.street}";
       }
-
-      // Dijkstra: Find nearest faculty for found items
       if (_type == 'found') {
         String nearestId = findNearestFacultyId(latLng.LatLng(pos.latitude, pos.longitude));
         _suggestedDropOff = getFacultyName(nearestId);
       }
-    } catch (e) {
-      debugPrint("Location Error: $e");
-    } finally {
-      setState(() => _loading = false);
-    }
+    } catch (e) { /* Ignore */ }
   }
 
-  Future<bool> _showDialog(String title, String content) async {
-    return await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title), content: Text(content),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("No")),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Yes")),
-        ],
-      ),
-    ) ?? false;
-  }
-
+  // --- STEP 3: FORM ---
   Future<void> _submit() async {
     if (_titleController.text.isEmpty) return;
     setState(() => _loading = true);
     
     try {
       final user = Supabase.instance.client.auth.currentUser;
-      String imageUrl = '';
       
-      if (_image != null) {
-        final path = 'images/${user?.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        await Supabase.instance.client.storage.from('images').upload(path, _image!);
-        imageUrl = Supabase.instance.client.storage.from('images').getPublicUrl(path);
+      // Upload All Images
+      List<String> uploadedUrls = [];
+      for (var img in _images) {
+        final path = 'images/${DateTime.now().millisecondsSinceEpoch}_${uploadedUrls.length}.jpg';
+        await Supabase.instance.client.storage.from('images').upload(path, img);
+        uploadedUrls.add(Supabase.instance.client.storage.from('images').getPublicUrl(path));
       }
+
+      // Get Username
+      final profile = await Supabase.instance.client.from('profiles').select('username').eq('id', user!.id).single();
+      String username = profile['username'] ?? "Anonymous";
 
       await Supabase.instance.client.from('items').insert({
         'title': _titleController.text,
         'description': _descController.text,
         'type': _type,
         'category': _category,
-        'image_url': imageUrl,
-        'contact_number': _contactController.text, // Required new field
+        'image_urls': uploadedUrls, // Array
+        'contact_number': _contactController.text,
         'location_lat': _lat,
         'location_lng': _lng,
         'location_name': _locationController.text,
-        'reported_by': user?.id,
-        'drop_off_node': _type == 'found' ? _suggestedDropOff : null,
+        'reported_by': user.id,
+        'reported_username': username,
+        'verification_question': _questionController.text.isEmpty ? null : _questionController.text,
+        'verification_answer': _answerController.text.isEmpty ? null : _answerController.text,
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Report Posted Successfully!")));
         Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Published successfully!")));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
@@ -312,123 +204,100 @@ class _ReportScreenState extends State<ReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_currentStep == 0) {
-      return Scaffold(appBar: AppBar(title: const Text("New Report")), body: _buildSelectionStep());
-    }
+    if (_currentStep == 0) return Scaffold(appBar: AppBar(title: const Text("New Report")), body: _buildSelectionStep());
 
     return Scaffold(
-      appBar: AppBar(title: Text(_type == 'found' ? "Found Item" : "Lost Item")),
-      body: _loading 
-        ? const Center(child: CircularProgressIndicator()) 
-        : SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              // --- SMART MATCHING ALERT ---
-              if (_similarItems.isNotEmpty)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    border: Border.all(color: Colors.orange),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Column(
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text("Wait! Is one of these yours?", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange)),
-                      ),
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _similarItems.length,
-                        itemBuilder: (ctx, i) {
-                          final item = _similarItems[i];
-                          return ListTile(
-                            leading: item.imageUrl.isNotEmpty ? Image.network(item.imageUrl, width: 40, height: 40, fit: BoxFit.cover) : const Icon(Icons.image),
-                            title: Text(item.title),
-                            subtitle: Text(item.locationName),
-                            trailing: const Icon(Icons.arrow_forward),
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ItemDetailScreen(item: item))),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
+      backgroundColor: const Color(0xFFF5F5F7), // Apple grey background
+      appBar: AppBar(title: const Text("Details"), backgroundColor: Colors.transparent, elevation: 0),
+      body: _loading ? const Center(child: CircularProgressIndicator()) : SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image Scroll
+            if (_images.isNotEmpty)
+              SizedBox(
+                height: 120,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _images.length + 1,
+                  itemBuilder: (ctx, i) {
+                    if (i == _images.length) {
+                      return GestureDetector(
+                        onTap: _pickImages,
+                        child: Container(
+                          width: 100, margin: const EdgeInsets.only(right: 10),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                          child: const Icon(Icons.add_a_photo, color: Colors.grey),
+                        ),
+                      );
+                    }
+                    return Container(
+                      margin: const EdgeInsets.only(right: 10),
+                      child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_images[i], width: 120, fit: BoxFit.cover)),
+                    );
+                  },
                 ),
-              // ---------------------------
-
-              GestureDetector(
-                onTap: () => _showLostItemOptions(),
-                child: _image != null 
-                  ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(_image!, height: 180, fit: BoxFit.cover))
-                  : Container(
-                      height: 150, width: double.infinity,
-                      decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(10)),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [Icon(Icons.camera_alt, size: 40), Text("Tap to change photo")],
-                      ),
-                    ),
               ),
+            
+            const SizedBox(height: 20),
+            _inputField("Item Name", _titleController),
+            _inputField("Description", _descController, lines: 3),
+            _inputField("Location", _locationController, icon: Icons.map),
+            _inputField("Contact (WhatsApp)", _contactController, icon: Icons.phone),
+
+            // SECURITY SECTION (Anti-Theft)
+            if (_type == 'found') ...[
               const SizedBox(height: 20),
-
-              TextField(controller: _titleController, decoration: const InputDecoration(labelText: "Item Name", border: OutlineInputBorder())),
-              const SizedBox(height: 10),
-              
-              DropdownButtonFormField(
-                value: _category,
-                decoration: const InputDecoration(labelText: "Category", border: OutlineInputBorder()),
-                items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                onChanged: (v) => setState(() => _category = v.toString()),
-              ),
-              const SizedBox(height: 10),
-
-              TextField(controller: _descController, maxLines: 3, decoration: const InputDecoration(labelText: "Description", border: OutlineInputBorder())),
-              const SizedBox(height: 10),
-
-              TextField(
-                controller: _locationController, 
-                decoration: InputDecoration(
-                  labelText: "Location", 
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(icon: const Icon(Icons.my_location), onPressed: _getSmartLocation),
-                )
-              ),
-              const SizedBox(height: 10),
-
-              TextField(
-                controller: _contactController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: "Phone / WhatsApp",
-                  prefixIcon: Icon(Icons.phone),
-                  border: OutlineInputBorder(),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green.shade200)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("🔒 Anti-Theft Security", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                    const SizedBox(height: 5),
+                    const Text("Set a question only the owner can answer. (e.g., 'What is the wallpaper?')", style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 10),
+                    TextField(controller: _questionController, decoration: const InputDecoration(hintText: "Security Question", border: OutlineInputBorder(), filled: true, fillColor: Colors.white)),
+                    const SizedBox(height: 10),
+                    TextField(controller: _answerController, decoration: const InputDecoration(hintText: "Correct Answer", border: OutlineInputBorder(), filled: true, fillColor: Colors.white)),
+                  ],
                 ),
-              ),
-
-              if (_type == 'found' && _suggestedDropOff != null)
-                Card(
-                  color: Colors.green.shade50,
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  child: ListTile(
-                    leading: const Icon(Icons.place, color: Colors.green),
-                    title: Text("Nearest Drop-off: $_suggestedDropOff"),
-                    subtitle: const Text("Tap to use this drop-off point"),
-                    onTap: () => setState(() => _descController.text += "\n\nItem left at: $_suggestedDropOff"),
-                  ),
-                ),
-
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _submit,
-                style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50), backgroundColor: _type == 'lost' ? Colors.red : Colors.blue),
-                child: Text("SUBMIT ${_type.toUpperCase()} REPORT", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ],
-          ),
+
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton(
+                onPressed: _submit,
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                child: const Text("Post Report", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _inputField(String label, TextEditingController ctrl, {int lines = 1, IconData? icon}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: TextField(
+        controller: ctrl,
+        maxLines: lines,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        ),
+      ),
     );
   }
 }

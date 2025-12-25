@@ -47,6 +47,10 @@ dependencies:
   geocoding: ^3.0.0       # For readable addresses
   palette_generator: ^0.3.3 # To detect colors from images
 
+  confetti: ^0.7.0
+  timeago: ^3.6.0
+  badges: ^3.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
