@@ -304,19 +304,47 @@ class _ReportScreenState extends State<ReportScreen> {
   Future<void> _getSmartLocation() async {
     if (_locationController.text.isNotEmpty) return;
     setState(() => _loading = true);
+    
     try {
+      // 1. Check Service
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enable GPS for auto-location")));
+        setState(() => _loading = false);
+        return;
+      }
+
+      // 2. Check Permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() => _loading = false);
+          return;
+        }
+      }
+
+      // 3. Get Position
       Position pos = await Geolocator.getCurrentPosition();
       _lat = pos.latitude;
       _lng = pos.longitude;
+      
       List<Placemark> places = await placemarkFromCoordinates(pos.latitude, pos.longitude);
-      if (places.isNotEmpty) _locationController.text = "${places.first.name}, ${places.first.street}";
+      if (places.isNotEmpty) {
+        _locationController.text = "${places.first.name}, ${places.first.street}";
+      }
+      
       if (_type == 'found') {
         String nearestId = findNearestFacultyId(latLng.LatLng(pos.latitude, pos.longitude));
         _suggestedDropOff = getFacultyName(nearestId);
       }
-    } catch (e) { /* */ } finally { setState(() => _loading = false); }
+    } catch (e) {
+      debugPrint("Location Error: $e");
+    } finally {
+      setState(() => _loading = false);
+    }
   }
-
+  
   Future<void> _submit() async {
     if (_titleController.text.isEmpty) return;
     setState(() => _loading = true);

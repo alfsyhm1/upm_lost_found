@@ -23,14 +23,22 @@ class _LocatorScreenState extends State<LocatorScreen> {
   void initState() {
     super.initState();
     _fetchItems();
+    // OPTIONAL: Auto-center on user when screen opens
+    _goToMyLocation();
   }
 
   Future<void> _fetchItems() async {
-    final data = await Supabase.instance.client.from('items').select();
-    setState(() {
-      _items = (data as List).map((e) => Item.fromMap(e)).toList();
-      _filteredItems = _items;
-    });
+    try {
+      final data = await Supabase.instance.client.from('items').select();
+      if (mounted) {
+        setState(() {
+          _items = (data as List).map((e) => Item.fromMap(e)).toList();
+          _filteredItems = _items;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching items: $e");
+    }
   }
 
   void _filterItems(String query) {
@@ -47,9 +55,38 @@ class _LocatorScreenState extends State<LocatorScreen> {
     _mapController.move(_mapController.camera.center, _currentZoom);
   }
 
+  // --- SAFE LOCATION FUNCTION ---
   Future<void> _goToMyLocation() async {
-    Position pos = await Geolocator.getCurrentPosition();
-    _mapController.move(LatLng(pos.latitude, pos.longitude), 16.0);
+    try {
+      // 1. Check if GPS is enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enable GPS/Location services.")));
+        return;
+      }
+
+      // 2. Check Permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location permission denied.")));
+          return;
+        }
+      }
+      
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location is permanently denied. Check settings.")));
+        return;
+      }
+
+      // 3. Get Location
+      Position pos = await Geolocator.getCurrentPosition();
+      _mapController.move(LatLng(pos.latitude, pos.longitude), 16.0);
+      
+    } catch (e) {
+      debugPrint("Location error: $e");
+    }
   }
 
   @override
@@ -80,7 +117,6 @@ class _LocatorScreenState extends State<LocatorScreen> {
             ],
           ),
           
-          // Search Bar
           Positioned(
             top: 50, left: 15, right: 15,
             child: Card(
@@ -97,7 +133,6 @@ class _LocatorScreenState extends State<LocatorScreen> {
             ),
           ),
 
-          // Zoom & Location Controls
           Positioned(
             bottom: 100, right: 15,
             child: Column(
