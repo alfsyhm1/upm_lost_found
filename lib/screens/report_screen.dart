@@ -109,37 +109,47 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _handleSelection(String type) async {
     setState(() => _type = type);
+    
     showModalBottomSheet(
       context: context,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(20),
-        height: 250,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Add photos of the $type item?", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const Icon(Icons.camera_alt, color: Colors.blue),
-              title: const Text("Take Photo (Camera)"),
-              onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.camera); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library, color: Colors.purple),
-              title: const Text("Choose from Gallery"),
-              onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.gallery); },
-            ),
-            if (type == 'lost')
+      isScrollControlled: true, // Allows the sheet to adjust size properly
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom, // Handles keyboard if it were to appear
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          // height: 250,  <--- REMOVED FIXED HEIGHT to prevent overflow
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // <--- ADDED: Makes height fit content exactly
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Add photos of the $type item?", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
               ListTile(
-                leading: const Icon(Icons.edit_note, color: Colors.grey),
-                title: const Text("No photo, I'll describe it"),
-                onTap: () { 
-                  Navigator.pop(ctx); 
-                  setState(() => _currentStep = 1);
-                  _getSmartLocation();
-                },
+                leading: const Icon(Icons.camera_alt, color: Colors.blue),
+                title: const Text("Take Photo (Camera)"),
+                onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.camera); },
               ),
-          ],
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.purple),
+                title: const Text("Choose from Gallery"),
+                onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.gallery); },
+              ),
+              if (type == 'lost')
+                ListTile(
+                  leading: const Icon(Icons.edit_note, color: Colors.grey),
+                  title: const Text("No photo, I'll describe it"),
+                  onTap: () { 
+                    Navigator.pop(ctx); 
+                    setState(() => _currentStep = 1); 
+                    _getSmartLocation(); 
+                  },
+                ),
+              // Add extra safety padding at bottom
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );

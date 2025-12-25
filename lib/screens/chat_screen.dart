@@ -6,12 +6,14 @@ class ChatScreen extends StatefulWidget {
   final String otherUserId;
   final String otherUserName;
   final String? itemId;
+  final String? itemName; // <--- Added this to fix the error
 
   const ChatScreen({
     super.key, 
     required this.otherUserId, 
     required this.otherUserName, 
-    this.itemId
+    this.itemId,
+    this.itemName, // <--- Added this to constructor
   });
 
   @override
@@ -29,7 +31,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _messagesStream = Supabase.instance.client
         .from('messages')
         .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false)
+        .order('created_at', ascending: false) // Newest messages at the bottom
         .map((data) => data.where((msg) => 
             (msg['sender_id'] == _myId && msg['receiver_id'] == widget.otherUserId) ||
             (msg['sender_id'] == widget.otherUserId && msg['receiver_id'] == _myId)
@@ -55,6 +57,32 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(title: Text(widget.otherUserName)),
       body: Column(
         children: [
+          // --- STICKY ITEM HEADER ---
+          if (widget.itemName != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                border: Border(bottom: BorderSide(color: Colors.blue.shade100)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 18, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Chatting about: ${widget.itemName}",
+                      style: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.bold, fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // --------------------------
+
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: _messagesStream,
@@ -71,7 +99,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     final isMe = msg['sender_id'] == _myId;
                     String content = msg['content'];
 
-                    // --- RENDER SYSTEM NOTICE ---
+                    // --- SYSTEM NOTICE RENDERER ---
                     if (content.startsWith("[NOTICE]:")) {
                       return Container(
                         margin: const EdgeInsets.symmetric(vertical: 15),
@@ -97,7 +125,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       );
                     }
-                    // ---------------------------
+                    // -----------------------------
 
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,

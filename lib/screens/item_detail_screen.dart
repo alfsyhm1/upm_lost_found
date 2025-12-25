@@ -98,7 +98,10 @@ class ItemDetailScreen extends StatelessWidget {
 
     if (context.mounted) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(
-        otherUserId: item.reportedBy!, otherUserName: item.reportedUsername ?? "User", itemId: item.id,
+        otherUserId: item.reportedBy!, 
+        otherUserName: item.reportedUsername ?? "User",
+        itemId: item.id,
+        itemName: item.title, // <--- ADD THIS LINE to pass the name
       )));
     }
   }
