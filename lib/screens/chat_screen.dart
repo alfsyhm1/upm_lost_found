@@ -29,7 +29,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _messagesStream = Supabase.instance.client
         .from('messages')
         .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false) // FIX 1: Newest first for logic
+        .order('created_at', ascending: false)
         .map((data) => data.where((msg) => 
             (msg['sender_id'] == _myId && msg['receiver_id'] == widget.otherUserId) ||
             (msg['sender_id'] == widget.otherUserId && msg['receiver_id'] == _myId)
@@ -44,7 +44,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await Supabase.instance.client.from('messages').insert({
       'sender_id': _myId,
       'receiver_id': widget.otherUserId,
-      'item_id': widget.itemId, // Passes UUID string directly
+      'item_id': widget.itemId,
       'content': text,
     });
   }
@@ -63,22 +63,41 @@ class _ChatScreenState extends State<ChatScreen> {
                 final messages = snapshot.data!;
                 
                 return ListView.builder(
-                  reverse: true, // FIX 2: Start from bottom
+                  reverse: true, 
                   padding: const EdgeInsets.all(10),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
                     final isMe = msg['sender_id'] == _myId;
-                    
-                    // Optional: Show Item Context Card
-                    if (msg['content'].toString().startsWith("👋 Hi, I am interested")) {
-                       return Container(
-                         margin: const EdgeInsets.only(bottom: 10),
-                         padding: const EdgeInsets.all(10),
-                         decoration: BoxDecoration(color: Colors.yellow.shade100, borderRadius: BorderRadius.circular(10)),
-                         child: Text(msg['content'], style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
-                       );
+                    String content = msg['content'];
+
+                    // --- RENDER SYSTEM NOTICE ---
+                    if (content.startsWith("[NOTICE]:")) {
+                      return Container(
+                        margin: const EdgeInsets.symmetric(vertical: 15),
+                        alignment: Alignment.center,
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green.shade300)
+                          ),
+                          child: Column(
+                            children: [
+                              const Icon(Icons.verified_user, color: Colors.green),
+                              const SizedBox(height: 5),
+                              Text(
+                                content.replaceAll("[NOTICE]:", "").trim(),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
                     }
+                    // ---------------------------
 
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -89,7 +108,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           color: isMe ? Colors.blue : Colors.grey.shade200,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Text(msg['content'], style: TextStyle(color: isMe ? Colors.white : Colors.black)),
+                        child: Text(content, style: TextStyle(color: isMe ? Colors.white : Colors.black)),
                       ),
                     );
                   },

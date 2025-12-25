@@ -31,38 +31,52 @@ class _MainContainerScreenState extends State<MainContainerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Stream to count unread messages (Approximate for now)
-    final alertStream = Supabase.instance.client.from('messages')
+    // Stream filtered to only show messages sent TO the current user
+    final alertStream = Supabase.instance.client
+        .from('messages')
         .stream(primaryKey: ['id'])
-        .order('created_at')
-        .map((list) => list.where((m) => m['receiver_id'] == myId).length);
+        .eq('receiver_id', myId!)
+        .order('created_at');
 
     return Scaffold(
       body: _getPage(_currentIndex),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
-          if (index == 1) Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportScreen()));
-          else setState(() => _currentIndex = index);
+          if (index == 1) {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportScreen()));
+          } else {
+            setState(() => _currentIndex = index);
+          }
         },
         destinations: [
           const NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
           const NavigationDestination(icon: Icon(Icons.add_circle_outline), label: 'Report'),
           const NavigationDestination(icon: Icon(Icons.map_outlined), label: 'Locator'),
+          
+          // Badge Logic
           NavigationDestination(
-            icon: StreamBuilder<int>(
+            icon: StreamBuilder<List<Map<String, dynamic>>>(
               stream: alertStream,
               builder: (context, snapshot) {
-                int count = snapshot.data ?? 0;
+                // If we have data, show the badge count
+                int count = snapshot.hasData ? snapshot.data!.length : 0;
+                
                 return badges.Badge(
+                  position: badges.BadgePosition.topEnd(top: -12, end: -12),
                   showBadge: count > 0,
-                  badgeContent: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                  badgeContent: Text(
+                    '$count', 
+                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)
+                  ),
+                  badgeStyle: const badges.BadgeStyle(badgeColor: Colors.red, padding: EdgeInsets.all(5)),
                   child: const Icon(Icons.notifications_outlined),
                 );
               },
             ),
             label: 'Alerts',
           ),
+          
           const NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
       ),

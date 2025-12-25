@@ -9,7 +9,7 @@ class ItemDetailScreen extends StatelessWidget {
 
   void _verifyAndClaim(BuildContext context) {
     if (item.verificationQuestion == null || item.verificationOptions.isEmpty) {
-      _openChat(context);
+      _openChat(context, verifiedFirstTry: false);
       return;
     }
 
@@ -17,6 +17,8 @@ class ItemDetailScreen extends StatelessWidget {
       context: context,
       builder: (ctx) {
         String? selectedAnswer;
+        int attempts = 0; // Track attempts locally in the dialog
+
         return StatefulBuilder(builder: (context, setState) {
           return AlertDialog(
             title: const Text("Security Check"),
@@ -36,9 +38,11 @@ class ItemDetailScreen extends StatelessWidget {
             actions: [
               ElevatedButton(
                 onPressed: () {
+                  attempts++; // Increment attempt
                   if (selectedAnswer == item.verificationAnswer) {
                     Navigator.pop(ctx);
-                    _openChat(context);
+                    // Pass true if they got it right on attempt #1
+                    _openChat(context, verifiedFirstTry: attempts == 1);
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect!"), backgroundColor: Colors.red));
                   }
@@ -52,16 +56,30 @@ class ItemDetailScreen extends StatelessWidget {
     );
   }
 
-  void _openChat(BuildContext context) async {
+  void _openChat(BuildContext context, {required bool verifiedFirstTry}) async {
     final myId = Supabase.instance.client.auth.currentUser!.id;
-    if (myId == item.reportedBy) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You cannot chat with yourself.")));
-      return;
+    if (myId == item.reportedBy) return;
+
+    // Standard Context Message
+    String contextMessage = "👋 Hi, I am interested in the '${item.title}' you posted.";
+    
+    // --- SPECIAL NOTICE LOGIC ---
+    if (verifiedFirstTry) {
+      // Use a special prefix [NOTICE] so ChatScreen can render it differently
+      String specialNotice = "[NOTICE]: Verified Owner! 🛡️\nI answered the security question correctly on the first try.";
+      
+      try {
+        await Supabase.instance.client.from('messages').insert({
+          'sender_id': myId,
+          'receiver_id': item.reportedBy,
+          'item_id': item.id,
+          'content': specialNotice,
+        });
+      } catch (_) {}
     }
 
-    // FIX: Always send context message for the specific item
-    final contextMessage = "👋 Hi, I would like to chat with you regarding the '${item.title}' you posted.";
-    
+    // Always send the greeting logic (check if already sent to avoid spamming greeting)
+    // For now, we allow sending context greeting.
     try {
       await Supabase.instance.client.from('messages').insert({
         'sender_id': myId,
@@ -69,9 +87,7 @@ class ItemDetailScreen extends StatelessWidget {
         'item_id': item.id,
         'content': contextMessage,
       });
-    } catch (e) {
-      debugPrint("Error sending context: $e");
-    }
+    } catch (_) {}
 
     if (context.mounted) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(
@@ -92,7 +108,7 @@ class ItemDetailScreen extends StatelessWidget {
               SliverAppBar(
                 expandedHeight: 350,
                 pinned: true,
-                automaticallyImplyLeading: false, // We use custom back button
+                automaticallyImplyLeading: false,
                 flexibleSpace: FlexibleSpaceBar(
                   background: item.imageUrls.isNotEmpty
                       ? PageView.builder(itemCount: item.imageUrls.length, itemBuilder: (ctx, i) => Image.network(item.imageUrls[i], fit: BoxFit.cover))
@@ -130,13 +146,10 @@ class ItemDetailScreen extends StatelessWidget {
                       SizedBox(
                         width: double.infinity, height: 50,
                         child: OutlinedButton.icon(
-                          onPressed: () => _openChat(context),
+                          onPressed: () => _openChat(context, verifiedFirstTry: false),
                           icon: const Icon(Icons.chat_bubble_outline),
                           label: const Text("Chat with Finder"),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.black),
-                            foregroundColor: Colors.black,
-                          ),
+                          style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.black), foregroundColor: Colors.black),
                         ),
                       )
                     ]
@@ -145,14 +158,18 @@ class ItemDetailScreen extends StatelessWidget {
               ),
             ],
           ),
-          // High Contrast Back Button
           Positioned(
             top: 50, left: 20,
             child: GestureDetector(
               onTap: () => Navigator.pop(context),
-              child: CircleAvatar(
-                backgroundColor: Colors.white.withOpacity(0.8),
-                child: const Icon(Icons.arrow_back, color: Colors.black),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 6)],
+                ),
+                child: const Icon(Icons.arrow_back, color: Colors.black, size: 24),
               ),
             ),
           ),

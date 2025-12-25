@@ -8,7 +8,8 @@ import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:latlong2/latlong.dart' as latLng;
 import '../services/dijkstra_service.dart';
-import '../models/item_model.dart'; 
+import '../models/item_model.dart';
+import 'item_detail_screen.dart'; // Needed for navigation
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -28,7 +29,6 @@ class _ReportScreenState extends State<ReportScreen> {
   final _locationController = TextEditingController();
   final _questionController = TextEditingController(); 
   
-  // Multiple Choice Logic
   final List<TextEditingController> _optionControllers = [TextEditingController(), TextEditingController(), TextEditingController()];
   int _correctOptionIndex = 0;
 
@@ -40,21 +40,24 @@ class _ReportScreenState extends State<ReportScreen> {
 
   final List<String> _categories = ['Electronics', 'Clothing', 'Wallet', 'Keys', 'Documents', 'Accessories', 'Other'];
 
-  // --- UI: High Contrast Back Button ---
   Widget _buildHeader() {
     return Positioned(
       top: 50, left: 20,
       child: GestureDetector(
         onTap: () => Navigator.pop(context),
-        child: CircleAvatar(
-          backgroundColor: Colors.white.withOpacity(0.8),
-          child: const Icon(Icons.arrow_back, color: Colors.black),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white, 
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 5)],
+          ),
+          child: const Icon(Icons.arrow_back, color: Colors.black, size: 24),
         ),
       ),
     );
   }
 
-  // --- STEP 1: SELECTION ---
   Widget _buildSelectionStep() {
     return Scaffold(
       appBar: AppBar(title: const Text("New Report")),
@@ -101,8 +104,6 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _handleSelection(String type) async {
     setState(() => _type = type);
-    
-    // Show Source Options
     showModalBottomSheet(
       context: context,
       builder: (ctx) => Container(
@@ -139,7 +140,6 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  // --- STEP 2: IMAGE PICKER & AI ---
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
     try {
@@ -147,7 +147,6 @@ class _ReportScreenState extends State<ReportScreen> {
         final picked = await picker.pickMultiImage();
         if (picked.isNotEmpty) {
           setState(() => _images = picked.map((e) => File(e.path)).toList());
-          // Delay to allow UI to settle before AI runs
           if (mounted) {
              await Future.delayed(const Duration(milliseconds: 500));
              _analyzeImages();
@@ -174,7 +173,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
     try {
       final inputImage = InputImage.fromFile(_images.first);
-      final labeler = ImageLabeler(options: ImageLabelerOptions(confidenceThreshold: 0.5));
+      final labeler = ImageLabeler(options: ImageLabelerOptions(confidenceThreshold: 0.3));
       final labels = await labeler.processImage(inputImage);
       labeler.close();
 
@@ -186,29 +185,33 @@ class _ReportScreenState extends State<ReportScreen> {
 
       setState(() => _loading = false);
 
-      // Default to "Item" if AI finds nothing, ensuring the dialog ALWAYS opens
-      String detectedName = labels.isNotEmpty ? labels.first.label : "Item";
+      final priorityKeywords = ['Key', 'Keys', 'Wallet', 'Purse', 'Phone', 'Laptop', 'Computer', 'Bag', 'Card', 'Passport'];
+      String detectedName = "Unknown Item";
       
+      for (var label in labels) {
+        if (priorityKeywords.any((k) => label.label.toLowerCase().contains(k.toLowerCase()))) {
+          detectedName = label.label;
+          break;
+        }
+      }
+      
+      if (detectedName == "Unknown Item" && labels.isNotEmpty) {
+        detectedName = labels.first.label;
+      }
+
       if (!mounted) return;
 
-      // 1. Ask Name
       String finalName = await _askAIQuestion("AI identified this as '$detectedName'. Is that correct?", detectedName);
       _titleController.text = finalName;
       _autoCategorize(finalName);
 
-      // 2. Ask Color
       String finalColor = await _askAIQuestion("Is the main color '$colorInfo'?", colorInfo);
       
-      // 3. Ask Details
-      String tags = labels.isNotEmpty 
-          ? labels.take(3).map((l) => l.label).join(', ') 
-          : "No specific tags";
-      String finalDetails = await _askAIQuestion("AI detected these details: '$tags'. Add to description?", tags);
+      String tags = labels.isNotEmpty ? labels.take(3).map((l) => l.label).join(', ') : "None";
+      String finalDetails = await _askAIQuestion("AI details: '$tags'. Add to description?", tags);
 
-      // 4. Auto-fill Description
       _descController.text = "Item: $finalName\nColor: $finalColor\nDetails: $finalDetails";
 
-      // 5. Proceed
       setState(() => _currentStep = 1);
       _getSmartLocation();
       _checkForSimilarItems(finalName);
@@ -230,19 +233,13 @@ class _ReportScreenState extends State<ReportScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text("AI Smart Check 🤖"),
+              title: const Text("AI Check 🤖"),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(question, style: const TextStyle(fontSize: 16)),
+                  Text(question),
                   if (isWrong)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: TextField(
-                        controller: correctionCtrl,
-                        decoration: const InputDecoration(labelText: "Type correct detail", border: OutlineInputBorder()),
-                      ),
-                    )
+                    TextField(controller: correctionCtrl, decoration: const InputDecoration(labelText: "Correction"))
                 ],
               ),
               actions: [
@@ -253,9 +250,7 @@ class _ReportScreenState extends State<ReportScreen> {
                   ),
                 ElevatedButton(
                   onPressed: () {
-                    if (isWrong && correctionCtrl.text.isNotEmpty) {
-                      value = correctionCtrl.text;
-                    }
+                    if (isWrong && correctionCtrl.text.isNotEmpty) value = correctionCtrl.text;
                     Navigator.pop(ctx);
                   },
                   child: const Text("Confirm"),
@@ -274,7 +269,7 @@ class _ReportScreenState extends State<ReportScreen> {
       final response = await Supabase.instance.client
           .from('items')
           .select()
-          .eq('type', _type == 'lost' ? 'found' : 'lost') // Opposite
+          .eq('type', _type == 'lost' ? 'found' : 'lost') 
           .ilike('title', '%$query%')
           .limit(3);
 
@@ -282,7 +277,6 @@ class _ReportScreenState extends State<ReportScreen> {
         setState(() {
           _similarItems = (response as List).map((e) => Item.fromMap(e)).toList();
         });
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Potential matches found!"), backgroundColor: Colors.orange));
       }
     } catch (e) { debugPrint("Search Error: $e"); }
   }
@@ -292,6 +286,7 @@ class _ReportScreenState extends State<ReportScreen> {
     if (label.contains('phone') || label.contains('laptop')) _category = 'Electronics';
     else if (label.contains('wallet') || label.contains('card')) _category = 'Wallet';
     else if (label.contains('key')) _category = 'Keys';
+    else if (label.contains('clothing')) _category = 'Clothing';
   }
 
   Future<void> _getSmartLocation() async {
@@ -303,7 +298,6 @@ class _ReportScreenState extends State<ReportScreen> {
       _lng = pos.longitude;
       List<Placemark> places = await placemarkFromCoordinates(pos.latitude, pos.longitude);
       if (places.isNotEmpty) _locationController.text = "${places.first.name}, ${places.first.street}";
-      
       if (_type == 'found') {
         String nearestId = findNearestFacultyId(latLng.LatLng(pos.latitude, pos.longitude));
         _suggestedDropOff = getFacultyName(nearestId);
@@ -314,11 +308,8 @@ class _ReportScreenState extends State<ReportScreen> {
   Future<void> _submit() async {
     if (_titleController.text.isEmpty) return;
     setState(() => _loading = true);
-    
     try {
       final user = Supabase.instance.client.auth.currentUser;
-      
-      // Upload Images
       List<String> uploadedUrls = [];
       for (var img in _images) {
         final path = 'images/${user?.id}_${DateTime.now().millisecondsSinceEpoch}_${uploadedUrls.length}.jpg';
@@ -326,14 +317,11 @@ class _ReportScreenState extends State<ReportScreen> {
         uploadedUrls.add(Supabase.instance.client.storage.from('images').getPublicUrl(path));
       }
 
-      // Prepare Security Options
       List<String> options = [];
       String? answer;
       if (_type == 'found' && _questionController.text.isNotEmpty) {
         options = _optionControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList();
-        if (options.isNotEmpty) {
-          answer = options[_correctOptionIndex]; // The correct one
-        }
+        if (options.isNotEmpty) answer = options[_correctOptionIndex]; 
       }
 
       String username = "Anonymous";
@@ -354,7 +342,6 @@ class _ReportScreenState extends State<ReportScreen> {
         'reported_by': user!.id,
         'reported_username': username,
         'drop_off_node': _type == 'found' ? _suggestedDropOff : null,
-        // New Security Fields
         'verification_question': _questionController.text.isEmpty ? null : _questionController.text,
         'verification_options': options,
         'verification_answer': answer,
@@ -382,7 +369,6 @@ class _ReportScreenState extends State<ReportScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Horizontal Image Scroll
                 if (_images.isNotEmpty)
                   SizedBox(
                     height: 120,
@@ -396,19 +382,51 @@ class _ReportScreenState extends State<ReportScreen> {
                     ),
                   ),
                 
-                // Matches Alert
+                // --- UPDATE: MATCHES SECTION WITH YES/NO ---
                 if (_similarItems.isNotEmpty)
                   Container(
                     margin: const EdgeInsets.symmetric(vertical: 20),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.shade200)),
                     child: Column(
                       children: [
-                        const Text("Wait! Is one of these yours?", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange)),
-                        ..._similarItems.map((item) => ListTile(title: Text(item.title), subtitle: Text(item.locationName))).toList()
+                        const Text("Wait! Is one of these yours?", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 16)),
+                        const SizedBox(height: 10),
+                        ..._similarItems.map((item) => Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              children: [
+                                Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                Text(item.locationName, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                const SizedBox(height: 10),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    // NO BUTTON (Dismiss)
+                                    TextButton.icon(
+                                      icon: const Icon(Icons.close, color: Colors.grey, size: 16),
+                                      label: const Text("No", style: TextStyle(color: Colors.grey)),
+                                      onPressed: () => setState(() => _similarItems.remove(item)),
+                                    ),
+                                    // YES BUTTON (Navigate)
+                                    ElevatedButton.icon(
+                                      icon: const Icon(Icons.check, size: 16),
+                                      label: const Text("Yes, Check It"),
+                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+                                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ItemDetailScreen(item: item))),
+                                    ),
+                                  ],
+                                )
+                              ],
+                            ),
+                          ),
+                        )).toList()
                       ],
                     ),
                   ),
+                // ------------------------------------------
 
                 const SizedBox(height: 20),
                 _buildTextField("Item Name", _titleController),
@@ -424,14 +442,13 @@ class _ReportScreenState extends State<ReportScreen> {
                 const SizedBox(height: 10),
                 _buildTextField("Location", _locationController, icon: Icons.map),
                 
-                // Multiple Choice Security Setup
                 if (_type == 'found') ...[
                   const SizedBox(height: 30),
-                  const Text("🔒 Security Question (Multiple Choice)", style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text("🔒 Security Question", style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
-                  _buildTextField("Question (e.g. What is the wallpaper?)", _questionController),
+                  _buildTextField("Question", _questionController),
                   const SizedBox(height: 10),
-                  const Text("Enter 3 Options & Select Correct One:", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const Text("Options (Select Correct One):", style: TextStyle(fontSize: 12)),
                   ...List.generate(3, (index) => RadioListTile(
                     title: TextField(controller: _optionControllers[index], decoration: InputDecoration(hintText: "Option ${index + 1}")),
                     value: index,
@@ -442,8 +459,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
                 const SizedBox(height: 30),
                 SizedBox(
-                  width: double.infinity, 
-                  height: 50,
+                  width: double.infinity, height: 50,
                   child: ElevatedButton(
                     onPressed: _submit, 
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
@@ -453,7 +469,7 @@ class _ReportScreenState extends State<ReportScreen> {
               ],
             ),
           ),
-          _buildHeader(), // High contrast back button
+          _buildHeader(), 
         ],
       ),
     );
