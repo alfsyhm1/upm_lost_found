@@ -8,8 +8,8 @@ import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:latlong2/latlong.dart' as latLng;
 import '../services/dijkstra_service.dart';
-import '../models/item_model.dart';
-import 'item_detail_screen.dart'; // Needed for navigation
+import '../models/item_model.dart'; 
+import 'item_detail_screen.dart'; // REQUIRED for navigation
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -27,8 +27,13 @@ class _ReportScreenState extends State<ReportScreen> {
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
   final _locationController = TextEditingController();
-  final _questionController = TextEditingController(); 
   
+  // Security Logic
+  final _questionController = TextEditingController(); 
+  final _answerController = TextEditingController(); // For simple text answer
+  
+  // Multiple Choice Logic
+  bool _isMultipleChoice = true; // Toggle state
   final List<TextEditingController> _optionControllers = [TextEditingController(), TextEditingController(), TextEditingController()];
   int _correctOptionIndex = 0;
 
@@ -185,18 +190,15 @@ class _ReportScreenState extends State<ReportScreen> {
 
       setState(() => _loading = false);
 
-      final priorityKeywords = ['Key', 'Keys', 'Wallet', 'Purse', 'Phone', 'Laptop', 'Computer', 'Bag', 'Card', 'Passport'];
-      String detectedName = "Unknown Item";
+      String detectedName = labels.isNotEmpty ? labels.first.label : "Item";
       
+      // Basic Priority Check
+      final priorityKeywords = ['Key', 'Wallet', 'Phone', 'Laptop', 'Bag', 'Card', 'Passport', 'Watch'];
       for (var label in labels) {
         if (priorityKeywords.any((k) => label.label.toLowerCase().contains(k.toLowerCase()))) {
           detectedName = label.label;
           break;
         }
-      }
-      
-      if (detectedName == "Unknown Item" && labels.isNotEmpty) {
-        detectedName = labels.first.label;
       }
 
       if (!mounted) return;
@@ -207,10 +209,10 @@ class _ReportScreenState extends State<ReportScreen> {
 
       String finalColor = await _askAIQuestion("Is the main color '$colorInfo'?", colorInfo);
       
-      String tags = labels.isNotEmpty ? labels.take(3).map((l) => l.label).join(', ') : "None";
-      String finalDetails = await _askAIQuestion("AI details: '$tags'. Add to description?", tags);
+      String tags = labels.take(3).map((l) => l.label).join(', ');
+      String finalDetails = await _askAIQuestion("AI tags: '$tags'. Keep them?", tags);
 
-      _descController.text = "Item: $finalName\nColor: $finalColor\nDetails: $finalDetails";
+      _descController.text = "Item: $finalName\nColor: $finalColor\nAI Tags: $finalDetails";
 
       setState(() => _currentStep = 1);
       _getSmartLocation();
@@ -317,11 +319,19 @@ class _ReportScreenState extends State<ReportScreen> {
         uploadedUrls.add(Supabase.instance.client.storage.from('images').getPublicUrl(path));
       }
 
+      // Security Logic
       List<String> options = [];
       String? answer;
+      
       if (_type == 'found' && _questionController.text.isNotEmpty) {
-        options = _optionControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList();
-        if (options.isNotEmpty) answer = options[_correctOptionIndex]; 
+        if (_isMultipleChoice) {
+          // Multiple Choice Mode
+          options = _optionControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList();
+          if (options.isNotEmpty) answer = options[_correctOptionIndex]; 
+        } else {
+          // Text Input Mode (Empty options list signals "Open Ended")
+          answer = _answerController.text.trim();
+        }
       }
 
       String username = "Anonymous";
@@ -342,8 +352,10 @@ class _ReportScreenState extends State<ReportScreen> {
         'reported_by': user!.id,
         'reported_username': username,
         'drop_off_node': _type == 'found' ? _suggestedDropOff : null,
+        
+        // Security Fields
         'verification_question': _questionController.text.isEmpty ? null : _questionController.text,
-        'verification_options': options,
+        'verification_options': options, // Empty list if text input
         'verification_answer': answer,
       });
 
@@ -382,7 +394,7 @@ class _ReportScreenState extends State<ReportScreen> {
                     ),
                   ),
                 
-                // --- UPDATE: MATCHES SECTION WITH YES/NO ---
+                // --- MATCHES ALERT WITH YES/NO ---
                 if (_similarItems.isNotEmpty)
                   Container(
                     margin: const EdgeInsets.symmetric(vertical: 20),
@@ -404,13 +416,13 @@ class _ReportScreenState extends State<ReportScreen> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                   children: [
-                                    // NO BUTTON (Dismiss)
+                                    // NO BUTTON
                                     TextButton.icon(
                                       icon: const Icon(Icons.close, color: Colors.grey, size: 16),
                                       label: const Text("No", style: TextStyle(color: Colors.grey)),
                                       onPressed: () => setState(() => _similarItems.remove(item)),
                                     ),
-                                    // YES BUTTON (Navigate)
+                                    // YES BUTTON
                                     ElevatedButton.icon(
                                       icon: const Icon(Icons.check, size: 16),
                                       label: const Text("Yes, Check It"),
@@ -426,7 +438,7 @@ class _ReportScreenState extends State<ReportScreen> {
                       ],
                     ),
                   ),
-                // ------------------------------------------
+                // ------------------------------------
 
                 const SizedBox(height: 20),
                 _buildTextField("Item Name", _titleController),
@@ -442,20 +454,48 @@ class _ReportScreenState extends State<ReportScreen> {
                 const SizedBox(height: 10),
                 _buildTextField("Location", _locationController, icon: Icons.map),
                 
+                // --- SECURITY QUESTION: TOGGLE MODE ---
                 if (_type == 'found') ...[
                   const SizedBox(height: 30),
                   const Text("🔒 Security Question", style: TextStyle(fontWeight: FontWeight.bold)),
+                  
+                  // Toggle Switch
+                  Row(
+                    children: [
+                      const Text("Type: "),
+                      const SizedBox(width: 10),
+                      ChoiceChip(
+                        label: const Text("Multiple Choice"),
+                        selected: _isMultipleChoice,
+                        onSelected: (v) => setState(() => _isMultipleChoice = true),
+                      ),
+                      const SizedBox(width: 10),
+                      ChoiceChip(
+                        label: const Text("Text Input"),
+                        selected: !_isMultipleChoice,
+                        onSelected: (v) => setState(() => _isMultipleChoice = false),
+                      ),
+                    ],
+                  ),
+                  
                   const SizedBox(height: 10),
-                  _buildTextField("Question", _questionController),
+                  _buildTextField("Question (e.g. What name is on the back?)", _questionController),
                   const SizedBox(height: 10),
-                  const Text("Options (Select Correct One):", style: TextStyle(fontSize: 12)),
-                  ...List.generate(3, (index) => RadioListTile(
-                    title: TextField(controller: _optionControllers[index], decoration: InputDecoration(hintText: "Option ${index + 1}")),
-                    value: index,
-                    groupValue: _correctOptionIndex,
-                    onChanged: (v) => setState(() => _correctOptionIndex = v as int),
-                  )),
+                  
+                  if (_isMultipleChoice) ...[
+                    const Text("Options (Select Correct One):", style: TextStyle(fontSize: 12)),
+                    ...List.generate(3, (index) => RadioListTile(
+                      title: TextField(controller: _optionControllers[index], decoration: InputDecoration(hintText: "Option ${index + 1}")),
+                      value: index,
+                      groupValue: _correctOptionIndex,
+                      onChanged: (v) => setState(() => _correctOptionIndex = v as int),
+                    )),
+                  ] else ...[
+                    // Text Input Answer Field
+                    _buildTextField("Correct Answer (Exact text)", _answerController),
+                  ]
                 ],
+                // ----------------------------------------
 
                 const SizedBox(height: 30),
                 SizedBox(

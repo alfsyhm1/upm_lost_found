@@ -8,7 +8,7 @@ class ItemDetailScreen extends StatelessWidget {
   const ItemDetailScreen({super.key, required this.item});
 
   void _verifyAndClaim(BuildContext context) {
-    if (item.verificationQuestion == null || item.verificationOptions.isEmpty) {
+    if (item.verificationQuestion == null) {
       _openChat(context, verifiedFirstTry: false);
       return;
     }
@@ -17,31 +17,48 @@ class ItemDetailScreen extends StatelessWidget {
       context: context,
       builder: (ctx) {
         String? selectedAnswer;
-        int attempts = 0; // Track attempts locally in the dialog
+        final textController = TextEditingController();
+        int attempts = 0; 
+
+        // Check if we have options (Multiple Choice) or not (Text Input)
+        bool isMultipleChoice = item.verificationOptions.isNotEmpty;
 
         return StatefulBuilder(builder: (context, setState) {
           return AlertDialog(
             title: const Text("Security Check"),
             content: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.verificationQuestion!, style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 15),
-                ...item.verificationOptions.map((option) => RadioListTile(
-                  title: Text(option),
-                  value: option,
-                  groupValue: selectedAnswer,
-                  onChanged: (val) => setState(() => selectedAnswer = val as String),
-                )),
+                
+                // Render Radio Buttons OR Text Field
+                if (isMultipleChoice)
+                  ...item.verificationOptions.map((option) => RadioListTile(
+                    title: Text(option),
+                    value: option,
+                    groupValue: selectedAnswer,
+                    onChanged: (val) => setState(() => selectedAnswer = val as String),
+                  ))
+                else 
+                  TextField(
+                    controller: textController,
+                    decoration: const InputDecoration(labelText: "Type your answer", border: OutlineInputBorder()),
+                  )
               ],
             ),
             actions: [
               ElevatedButton(
                 onPressed: () {
-                  attempts++; // Increment attempt
-                  if (selectedAnswer == item.verificationAnswer) {
+                  attempts++;
+                  // Get answer based on mode
+                  String finalAnswer = isMultipleChoice ? (selectedAnswer ?? "") : textController.text.trim();
+                  
+                  // Compare (Case insensitive)
+                  if (finalAnswer.toLowerCase() == item.verificationAnswer?.toLowerCase()) {
                     Navigator.pop(ctx);
-                    // Pass true if they got it right on attempt #1
+                    // Pass true if verified on first try
                     _openChat(context, verifiedFirstTry: attempts == 1);
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect!"), backgroundColor: Colors.red));
@@ -60,40 +77,28 @@ class ItemDetailScreen extends StatelessWidget {
     final myId = Supabase.instance.client.auth.currentUser!.id;
     if (myId == item.reportedBy) return;
 
-    // Standard Context Message
     String contextMessage = "👋 Hi, I am interested in the '${item.title}' you posted.";
     
-    // --- SPECIAL NOTICE LOGIC ---
+    // --- SEND SYSTEM NOTICE ---
     if (verifiedFirstTry) {
-      // Use a special prefix [NOTICE] so ChatScreen can render it differently
       String specialNotice = "[NOTICE]: Verified Owner! 🛡️\nI answered the security question correctly on the first try.";
-      
       try {
         await Supabase.instance.client.from('messages').insert({
-          'sender_id': myId,
-          'receiver_id': item.reportedBy,
-          'item_id': item.id,
-          'content': specialNotice,
+          'sender_id': myId, 'receiver_id': item.reportedBy, 'item_id': item.id, 'content': specialNotice,
         });
       } catch (_) {}
     }
+    // --------------------------
 
-    // Always send the greeting logic (check if already sent to avoid spamming greeting)
-    // For now, we allow sending context greeting.
     try {
       await Supabase.instance.client.from('messages').insert({
-        'sender_id': myId,
-        'receiver_id': item.reportedBy,
-        'item_id': item.id,
-        'content': contextMessage,
+        'sender_id': myId, 'receiver_id': item.reportedBy, 'item_id': item.id, 'content': contextMessage,
       });
     } catch (_) {}
 
     if (context.mounted) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(
-        otherUserId: item.reportedBy!, 
-        otherUserName: item.reportedUsername ?? "User",
-        itemId: item.id,
+        otherUserId: item.reportedBy!, otherUserName: item.reportedUsername ?? "User", itemId: item.id,
       )));
     }
   }
@@ -164,11 +169,7 @@ class ItemDetailScreen extends StatelessWidget {
               onTap: () => Navigator.pop(context),
               child: Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 6)],
-                ),
+                decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6)]),
                 child: const Icon(Icons.arrow_back, color: Colors.black, size: 24),
               ),
             ),
