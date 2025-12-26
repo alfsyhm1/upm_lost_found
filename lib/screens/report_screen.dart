@@ -48,6 +48,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   final List<String> _categories = ['Electronics', 'Clothing', 'Wallet', 'Keys', 'Documents', 'Accessories', 'Other'];
 
+  // Custom "Circle" Back Button
   Widget _buildHeader() {
     return Positioned(
       top: 50, left: 20,
@@ -68,7 +69,10 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Widget _buildSelectionStep() {
     return Scaffold(
-      appBar: AppBar(title: const Text("New Report")),
+      appBar: AppBar(
+        title: const Text("New Report"),
+        automaticallyImplyLeading: false, // FIX: Removes the "other" back button
+      ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -83,6 +87,16 @@ class _ReportScreenState extends State<ReportScreen> {
               ],
             ),
           ],
+        ),
+      ),
+      // Only show the custom back button here
+      floatingActionButtonLocation: FloatingActionButtonLocation.startTop,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: FloatingActionButton.small(
+          onPressed: () => Navigator.pop(context),
+          backgroundColor: Colors.white,
+          child: const Icon(Icons.arrow_back, color: Colors.black),
         ),
       ),
     );
@@ -213,7 +227,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
       if (!mounted) return;
 
-      // 1. Interactive Questions (Restored)
+      // AI Confirmation Dialogs
       String finalName = await _askAIQuestion("AI identified this as '$detectedName'. Is that correct?", detectedName);
       _titleController.text = finalName;
       _autoCategorize(finalName);
@@ -227,7 +241,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
       setState(() => _currentStep = 1);
       _getSmartLocation();
-      _checkForSimilarItems(finalName); // Trigger search
+      _checkForSimilarItems(finalName);
 
     } catch (e) {
       debugPrint("AI Error: $e");
@@ -283,7 +297,6 @@ class _ReportScreenState extends State<ReportScreen> {
     return value;
   }
 
-  // --- PROACTIVE SEARCH LOGIC ---
   Future<void> _checkForSimilarItems(String query) async {
     if (query.isEmpty) return;
     try {
@@ -296,11 +309,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
       final matches = (response as List).map((e) => Item.fromMap(e)).toList();
 
-      if (mounted) {
-        setState(() {
-          _similarItems = matches; // Store matches to display inline
-        });
-      }
+      if (mounted) setState(() => _similarItems = matches);
     } catch (e) { debugPrint("Search Error: $e"); }
   }
 
@@ -340,13 +349,14 @@ class _ReportScreenState extends State<ReportScreen> {
         _locationController.text = "${places.first.name}, ${places.first.street}";
       }
       
-      // Smart Drop-off Calculation
+      // --- SMART DEFAULT: NEAREST FACULTY ---
       if (_type == 'found') {
         String nearestId = findNearestFacultyId(latLng.LatLng(pos.latitude, pos.longitude));
         setState(() {
-          _selectedFacultyId = nearestId;
+          _selectedFacultyId = nearestId; // Set default dropdown value
         });
       }
+
     } catch (e) {
       debugPrint("Location Error: $e");
     } finally {
@@ -384,6 +394,7 @@ class _ReportScreenState extends State<ReportScreen> {
         if (profile != null) username = profile['username'] ?? "Anonymous";
       } catch (_) {}
 
+      // Use the dropdown selection, or fallback to manual calc if null (shouldn't happen)
       String? dropOffName;
       if (_selectedFacultyId != null) {
         dropOffName = getFacultyName(_selectedFacultyId!);
@@ -441,16 +452,12 @@ class _ReportScreenState extends State<ReportScreen> {
                     ),
                   ),
                 
-                // --- PROACTIVE SEARCH SECTION ---
+                // Live Search Section
                 if (_similarItems.isNotEmpty)
                   Container(
                     margin: const EdgeInsets.symmetric(vertical: 20),
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50, 
-                      borderRadius: BorderRadius.circular(12), 
-                      border: Border.all(color: Colors.orange.shade200)
-                    ),
+                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.shade200)),
                     child: Column(
                       children: [
                         Row(
@@ -462,7 +469,6 @@ class _ReportScreenState extends State<ReportScreen> {
                         ),
                         const SizedBox(height: 10),
                         ..._similarItems.map((item) => Card(
-                          margin: const EdgeInsets.only(bottom: 10),
                           child: Padding(
                             padding: const EdgeInsets.all(10),
                             child: Column(
@@ -493,22 +499,13 @@ class _ReportScreenState extends State<ReportScreen> {
                       ],
                     ),
                   ),
-                // --------------------------------
-
+                
                 const SizedBox(height: 20),
                 
-                // Live Search Text Field
                 TextField(
                   controller: _titleController,
-                  onChanged: (val) {
-                    if (val.length > 2) _checkForSimilarItems(val);
-                  },
-                  decoration: InputDecoration(
-                    labelText: "Item Name", 
-                    filled: true, 
-                    fillColor: Colors.white, 
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))
-                  ),
+                  onChanged: (val) { if (val.length > 2) _checkForSimilarItems(val); },
+                  decoration: InputDecoration(labelText: "Item Name", filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
                 ),
                 
                 const SizedBox(height: 10),
@@ -523,6 +520,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 const SizedBox(height: 10),
                 _buildTextField("Location", _locationController, icon: Icons.map),
                 
+                // SMART DROP-OFF
                 if (_type == 'found' && facultyNodes.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   Container(
@@ -535,9 +533,9 @@ class _ReportScreenState extends State<ReportScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(children: const [Icon(Icons.assistant_navigation, color: Colors.green), SizedBox(width: 10), Text("Drop-off Suggestion (Dijkstra)", style: TextStyle(fontWeight: FontWeight.bold))]),
+                        Row(children: const [Icon(Icons.location_city, color: Colors.green), SizedBox(width: 10), Text("Return to Faculty", style: TextStyle(fontWeight: FontWeight.bold))]),
                         const SizedBox(height: 10),
-                        const Text("Select the faculty you will return this item to:"),
+                        const Text("Nearest faculty auto-selected. You can change it:"),
                         const SizedBox(height: 5),
                         DropdownButtonFormField<String>(
                           value: _selectedFacultyId,
@@ -593,7 +591,7 @@ class _ReportScreenState extends State<ReportScreen> {
               ],
             ),
           ),
-          _buildHeader(), 
+          _buildHeader(), // Custom back button
         ],
       ),
     );
