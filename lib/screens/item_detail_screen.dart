@@ -2,27 +2,79 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/item_model.dart';
 import 'chat_screen.dart';
-import 'route_map_screen.dart'; // <--- THIS WAS MISSING!
+import 'route_map_screen.dart';
 
 class ItemDetailScreen extends StatelessWidget {
   final Item item;
   const ItemDetailScreen({super.key, required this.item});
 
-  // --- STAGE 1: Finder marks item as "At Faculty" ---
+  // --- UPDATED: Ask for PIC and Specific Place ---
   Future<void> _markAsReturnedToFaculty(BuildContext context) async {
-    String newDesc = "[AT FACULTY: ${item.dropOffNode}] \n\n${item.description}";
+    final picController = TextEditingController();
+    final locationController = TextEditingController();
+
+    // 1. Show Dialog to get details
+    final shouldProceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Return Details"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Please provide details for the owner to find the item."),
+            const SizedBox(height: 10),
+            TextField(
+              controller: locationController,
+              decoration: const InputDecoration(
+                labelText: "Specific Place",
+                hintText: "e.g., General Office / Lecturer Room",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: picController,
+              decoration: const InputDecoration(
+                labelText: "Person In Charge (PIC)",
+                hintText: "e.g., Dr. Maslina / Mr. Ahmad",
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Confirm Drop-off"),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldProceed != true) return;
+
+    // 2. Formulate the new status message
+    String specificLoc = locationController.text.isEmpty ? "General Office" : locationController.text;
+    String picName = picController.text.isEmpty ? "Staff on duty" : picController.text;
+
+    String newDesc = "[AT FACULTY: ${item.dropOffNode}]\n"
+        "📍 Specific Location: $specificLoc\n"
+        "👤 PIC: $picName\n\n"
+        "--- Original Description ---\n${item.description}";
     
+    // 3. Update Database
     await Supabase.instance.client.from('items').update({
       'description': newDesc,
     }).eq('id', item.id);
     
     if (context.mounted) {
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Status Updated: Item is now at the faculty!")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Status Updated: Item details saved!")));
     }
   }
 
-  // --- STAGE 2: Item Collected (Delete) ---
+  // --- STAGE 2: Item Collected ---
   Future<void> _markAsCollected(BuildContext context) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -175,7 +227,11 @@ class ItemDetailScreen extends StatelessWidget {
                     const SizedBox(height: 40),
                     if (isFinder) ...[
                       if (!isAtFaculty && item.dropOffNode != null)
-                        ElevatedButton(onPressed: () => _markAsReturnedToFaculty(context), child: const Text("I Returned it to Faculty")),
+                        ElevatedButton(
+                          onPressed: () => _markAsReturnedToFaculty(context), 
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+                          child: const Text("I Returned it to Faculty"),
+                        ),
                       if (isAtFaculty)
                         ElevatedButton(onPressed: () => _markAsCollected(context), child: const Text("Mark Collected")),
                     ] else ...[
@@ -188,7 +244,6 @@ class ItemDetailScreen extends StatelessWidget {
               ),
             ],
           ),
-          // Back Button
           Positioned(top: 50, left: 20, child: GestureDetector(onTap: () => Navigator.pop(context), child: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.arrow_back, color: Colors.black)))),
         ],
       ),

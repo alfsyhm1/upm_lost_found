@@ -7,10 +7,12 @@ class FacultyNode {
   FacultyNode(this.id, this.name, this.latitude, this.longitude);
 }
 
-// Example coordinates for main UPM faculties (adjust as needed)
+// Updated UPM Nodes with "Faculty of Science" and others
 final List<FacultyNode> facultyNodes = [
-  FacultyNode("FSKTM", "Computer Science", 2.9927, 101.7059),
-  FacultyNode("FP", "Faculty of Agriculture", 2.9936, 101.7072),
-  FacultyNode("FEP", "Faculty of Economics", 2.9915, 101.7088),
-  FacultyNode("FPP", "Faculty of Food Science", 2.9903, 101.7094),
+  FacultyNode("FSKTM", "Fac. Computer Science (FSKTM)", 2.9927, 101.7059),
+  FacultyNode("FP", "Fac. Agriculture (FP)", 2.9936, 101.7072),
+  FacultyNode("FEP", "School of Business (FEP)", 2.9915, 101.7088),
+  FacultyNode("FPP", "Fac. Educational Studies (FPP)", 2.9903, 101.7094),
+  FacultyNode("FS", "Faculty of Science (FS)", 2.9970, 101.7070), // New
+  FacultyNode("Library", "Main Library", 2.9950, 101.7065),
 ];
