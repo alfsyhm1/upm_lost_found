@@ -2,10 +2,54 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/item_model.dart';
 import 'chat_screen.dart';
+import 'route_map_screen.dart'; // <--- THIS WAS MISSING!
 
 class ItemDetailScreen extends StatelessWidget {
   final Item item;
   const ItemDetailScreen({super.key, required this.item});
+
+  // --- STAGE 1: Finder marks item as "At Faculty" ---
+  Future<void> _markAsReturnedToFaculty(BuildContext context) async {
+    String newDesc = "[AT FACULTY: ${item.dropOffNode}] \n\n${item.description}";
+    
+    await Supabase.instance.client.from('items').update({
+      'description': newDesc,
+    }).eq('id', item.id);
+    
+    if (context.mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Status Updated: Item is now at the faculty!")));
+    }
+  }
+
+  // --- STAGE 2: Item Collected (Delete) ---
+  Future<void> _markAsCollected(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Case Solved?"),
+        content: const Text("Has this item been successfully collected? This will remove the post."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Yes, Collected")),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await Supabase.instance.client.from('messages').delete().eq('item_id', item.id);
+        await Supabase.instance.client.from('items').delete().eq('id', item.id);
+        
+        if (context.mounted) {
+          Navigator.pop(context); 
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Case Resolved! 🎉")));
+        }
+      } catch (e) {
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    }
+  }
 
   void _verifyAndClaim(BuildContext context) {
     if (item.verificationQuestion == null) {
@@ -19,8 +63,6 @@ class ItemDetailScreen extends StatelessWidget {
         String? selectedAnswer;
         final textController = TextEditingController();
         int attempts = 0; 
-
-        // Check if we have options (Multiple Choice) or not (Text Input)
         bool isMultipleChoice = item.verificationOptions.isNotEmpty;
 
         return StatefulBuilder(builder: (context, setState) {
@@ -28,12 +70,9 @@ class ItemDetailScreen extends StatelessWidget {
             title: const Text("Security Check"),
             content: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.verificationQuestion!, style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 15),
-                
-                // Render Radio Buttons OR Text Field
                 if (isMultipleChoice)
                   ...item.verificationOptions.map((option) => RadioListTile(
                     title: Text(option),
@@ -42,23 +81,16 @@ class ItemDetailScreen extends StatelessWidget {
                     onChanged: (val) => setState(() => selectedAnswer = val as String),
                   ))
                 else 
-                  TextField(
-                    controller: textController,
-                    decoration: const InputDecoration(labelText: "Type your answer", border: OutlineInputBorder()),
-                  )
+                  TextField(controller: textController, decoration: const InputDecoration(labelText: "Answer"))
               ],
             ),
             actions: [
               ElevatedButton(
                 onPressed: () {
                   attempts++;
-                  // Get answer based on mode
                   String finalAnswer = isMultipleChoice ? (selectedAnswer ?? "") : textController.text.trim();
-                  
-                  // Compare (Case insensitive)
                   if (finalAnswer.toLowerCase() == item.verificationAnswer?.toLowerCase()) {
                     Navigator.pop(ctx);
-                    // Pass true if verified on first try
                     _openChat(context, verifiedFirstTry: attempts == 1);
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect!"), backgroundColor: Colors.red));
@@ -77,37 +109,26 @@ class ItemDetailScreen extends StatelessWidget {
     final myId = Supabase.instance.client.auth.currentUser!.id;
     if (myId == item.reportedBy) return;
 
-    String contextMessage = "👋 Hi, I am interested in the '${item.title}' you posted.";
-    
-    // --- SEND SYSTEM NOTICE ---
     if (verifiedFirstTry) {
-      String specialNotice = "[NOTICE]: Verified Owner! 🛡️\nI answered the security question correctly on the first try.";
-      try {
-        await Supabase.instance.client.from('messages').insert({
-          'sender_id': myId, 'receiver_id': item.reportedBy, 'item_id': item.id, 'content': specialNotice,
-        });
-      } catch (_) {}
+       try { await Supabase.instance.client.from('messages').insert({'sender_id': myId, 'receiver_id': item.reportedBy, 'item_id': item.id, 'content': "[NOTICE]: Verified Owner! 🛡️"}); } catch (_) {}
     }
-    // --------------------------
-
-    try {
-      await Supabase.instance.client.from('messages').insert({
-        'sender_id': myId, 'receiver_id': item.reportedBy, 'item_id': item.id, 'content': contextMessage,
-      });
-    } catch (_) {}
 
     if (context.mounted) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(
         otherUserId: item.reportedBy!, 
         otherUserName: item.reportedUsername ?? "User",
         itemId: item.id,
-        itemName: item.title, // <--- ADD THIS LINE to pass the name
+        itemName: item.title,
       )));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+    final isFinder = myId == item.reportedBy;
+    final isAtFaculty = item.description.contains("[AT FACULTY");
+
     return Scaffold(
       body: Stack(
         children: [
@@ -115,12 +136,10 @@ class ItemDetailScreen extends StatelessWidget {
             slivers: [
               SliverAppBar(
                 expandedHeight: 350,
-                pinned: true,
-                automaticallyImplyLeading: false,
                 flexibleSpace: FlexibleSpaceBar(
                   background: item.imageUrls.isNotEmpty
-                      ? PageView.builder(itemCount: item.imageUrls.length, itemBuilder: (ctx, i) => Image.network(item.imageUrls[i], fit: BoxFit.cover))
-                      : Container(color: Colors.grey.shade200, child: const Icon(Icons.image, size: 60)),
+                      ? Image.network(item.imageUrls[0], fit: BoxFit.cover)
+                      : Container(color: Colors.grey.shade200),
                 ),
               ),
               SliverPadding(
@@ -129,54 +148,48 @@ class ItemDetailScreen extends StatelessWidget {
                   delegate: SliverChildListDelegate([
                     Text(item.title, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        const Icon(Icons.pin_drop, color: Colors.grey),
-                        const SizedBox(width: 5),
-                        Text(item.locationName, style: const TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                    const Divider(height: 30),
+                    if (item.dropOffNode != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(
+                          color: isAtFaculty ? Colors.green.shade50 : Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: isAtFaculty ? Colors.green : Colors.orange),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(isAtFaculty ? "Ready for Collection at:" : "Return to:", style: const TextStyle(fontWeight: FontWeight.bold)),
+                            Text(item.dropOffNode!, style: const TextStyle(fontSize: 16)),
+                            if (!isAtFaculty)
+                              ElevatedButton.icon(
+                                icon: const Icon(Icons.map, size: 16),
+                                label: const Text("Show Route (Dijkstra)"),
+                                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RouteMapScreen(destinationName: item.dropOffNode!))),
+                              )
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                     Text(item.description, style: const TextStyle(fontSize: 16)),
                     const SizedBox(height: 40),
-                    
-                    if (Supabase.instance.client.auth.currentUser?.id != item.reportedBy) ...[
-                      if (item.type == 'found')
-                        SizedBox(
-                          width: double.infinity, height: 50,
-                          child: ElevatedButton(
-                            onPressed: () => _verifyAndClaim(context), 
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                            child: const Text("Claim Item", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
+                    if (isFinder) ...[
+                      if (!isAtFaculty && item.dropOffNode != null)
+                        ElevatedButton(onPressed: () => _markAsReturnedToFaculty(context), child: const Text("I Returned it to Faculty")),
+                      if (isAtFaculty)
+                        ElevatedButton(onPressed: () => _markAsCollected(context), child: const Text("Mark Collected")),
+                    ] else ...[
+                      if (!isAtFaculty) ElevatedButton(onPressed: () => _verifyAndClaim(context), child: const Text("Claim Item")),
                       const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity, height: 50,
-                        child: OutlinedButton.icon(
-                          onPressed: () => _openChat(context, verifiedFirstTry: false),
-                          icon: const Icon(Icons.chat_bubble_outline),
-                          label: const Text("Chat with Finder"),
-                          style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.black), foregroundColor: Colors.black),
-                        ),
-                      )
+                      OutlinedButton(onPressed: () => _openChat(context, verifiedFirstTry: false), child: const Text("Chat")),
                     ]
                   ]),
                 ),
               ),
             ],
           ),
-          Positioned(
-            top: 50, left: 20,
-            child: GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6)]),
-                child: const Icon(Icons.arrow_back, color: Colors.black, size: 24),
-              ),
-            ),
-          ),
+          // Back Button
+          Positioned(top: 50, left: 20, child: GestureDetector(onTap: () => Navigator.pop(context), child: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.arrow_back, color: Colors.black)))),
         ],
       ),
     );

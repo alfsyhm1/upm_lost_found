@@ -8,8 +8,9 @@ import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:latlong2/latlong.dart' as latLng;
 import '../services/dijkstra_service.dart';
-import '../models/item_model.dart'; 
-import 'item_detail_screen.dart'; // REQUIRED for navigation
+import '../models/item_model.dart';
+import '../models/faculty_model.dart'; // Import Faculty Nodes
+import 'item_detail_screen.dart'; 
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -28,20 +29,20 @@ class _ReportScreenState extends State<ReportScreen> {
   final _descController = TextEditingController();
   final _locationController = TextEditingController();
   
-  // Security Logic
+  // Security
   final _questionController = TextEditingController(); 
-  final _answerController = TextEditingController(); // For simple text answer
-  
-  // Multiple Choice Logic
-  bool _isMultipleChoice = true; // Toggle state
+  final _answerController = TextEditingController();
+  bool _isMultipleChoice = true;
   final List<TextEditingController> _optionControllers = [TextEditingController(), TextEditingController(), TextEditingController()];
   int _correctOptionIndex = 0;
 
   String _category = 'Other';
   double? _lat;
   double? _lng;
-  String? _suggestedDropOff;
-  List<Item> _similarItems = [];
+  
+  // --- NEW: SMART DROP-OFF LOGIC ---
+  String? _selectedFacultyId; // The ID of the faculty (e.g., "FSKTM")
+  // ---------------------------------
 
   final List<String> _categories = ['Electronics', 'Clothing', 'Wallet', 'Keys', 'Documents', 'Accessories', 'Other'];
 
@@ -70,7 +71,7 @@ class _ReportScreenState extends State<ReportScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text("What would you like to report?", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text("What are you reporting?", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 40),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -109,26 +110,22 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _handleSelection(String type) async {
     setState(() => _type = type);
-    
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Allows the sheet to adjust size properly
+      isScrollControlled: true,
       builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom, // Handles keyboard if it were to appear
-        ),
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: Container(
           padding: const EdgeInsets.all(20),
-          // height: 250,  <--- REMOVED FIXED HEIGHT to prevent overflow
           child: Column(
-            mainAxisSize: MainAxisSize.min, // <--- ADDED: Makes height fit content exactly
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text("Add photos of the $type item?", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               ListTile(
                 leading: const Icon(Icons.camera_alt, color: Colors.blue),
-                title: const Text("Take Photo (Camera)"),
+                title: const Text("Take Photo"),
                 onTap: () { Navigator.pop(ctx); _pickImage(ImageSource.camera); },
               ),
               ListTile(
@@ -139,14 +136,13 @@ class _ReportScreenState extends State<ReportScreen> {
               if (type == 'lost')
                 ListTile(
                   leading: const Icon(Icons.edit_note, color: Colors.grey),
-                  title: const Text("No photo, I'll describe it"),
+                  title: const Text("Skip photo (Describe only)"),
                   onTap: () { 
                     Navigator.pop(ctx); 
                     setState(() => _currentStep = 1); 
                     _getSmartLocation(); 
                   },
                 ),
-              // Add extra safety padding at bottom
               const SizedBox(height: 20),
             ],
           ),
@@ -200,80 +196,42 @@ class _ReportScreenState extends State<ReportScreen> {
 
       setState(() => _loading = false);
 
-      String detectedName = labels.isNotEmpty ? labels.first.label : "Item";
+      final priorityKeywords = ['Key', 'Wallet', 'Phone', 'Laptop', 'Bag', 'Card', 'Passport', 'Watch', 'Headphones'];
+      String detectedName = "Unknown Item";
       
-      // Basic Priority Check
-      final priorityKeywords = ['Key', 'Wallet', 'Phone', 'Laptop', 'Bag', 'Card', 'Passport', 'Watch'];
       for (var label in labels) {
         if (priorityKeywords.any((k) => label.label.toLowerCase().contains(k.toLowerCase()))) {
           detectedName = label.label;
           break;
         }
       }
+      if (detectedName == "Unknown Item" && labels.isNotEmpty) {
+        detectedName = labels.first.label;
+      }
 
-      if (!mounted) return;
+      _titleController.text = detectedName;
+      String tags = labels.take(5).map((l) => l.label).join(', ');
+      _descController.text = "Item: $detectedName\nColor: $colorInfo\nAI Tags: $tags";
+      _autoCategorize(detectedName);
 
-      String finalName = await _askAIQuestion("AI identified this as '$detectedName'. Is that correct?", detectedName);
-      _titleController.text = finalName;
-      _autoCategorize(finalName);
-
-      String finalColor = await _askAIQuestion("Is the main color '$colorInfo'?", colorInfo);
-      
-      String tags = labels.take(3).map((l) => l.label).join(', ');
-      String finalDetails = await _askAIQuestion("AI tags: '$tags'. Keep them?", tags);
-
-      _descController.text = "Item: $finalName\nColor: $finalColor\nAI Tags: $finalDetails";
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("✨ AI auto-filled details! Tap fields to edit."),
+            backgroundColor: Colors.purple.shade700,
+            duration: const Duration(seconds: 2),
+          )
+        );
+      }
 
       setState(() => _currentStep = 1);
       _getSmartLocation();
-      _checkForSimilarItems(finalName);
+      _checkForSimilarItems(detectedName);
 
     } catch (e) {
       debugPrint("AI Error: $e");
       setState(() { _loading = false; _currentStep = 1; });
     }
-  }
-
-  Future<String> _askAIQuestion(String question, String initialValue) async {
-    String value = initialValue;
-    await showDialog(
-      barrierDismissible: false,
-      context: context,
-      builder: (ctx) {
-        TextEditingController correctionCtrl = TextEditingController();
-        bool isWrong = false;
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text("AI Check 🤖"),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(question),
-                  if (isWrong)
-                    TextField(controller: correctionCtrl, decoration: const InputDecoration(labelText: "Correction"))
-                ],
-              ),
-              actions: [
-                if (!isWrong)
-                  TextButton(
-                    onPressed: () => setDialogState(() => isWrong = true), 
-                    child: const Text("No, correct it", style: TextStyle(color: Colors.red)),
-                  ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (isWrong && correctionCtrl.text.isNotEmpty) value = correctionCtrl.text;
-                    Navigator.pop(ctx);
-                  },
-                  child: const Text("Confirm"),
-                )
-              ],
-            );
-          }
-        );
-      },
-    );
-    return value;
   }
 
   Future<void> _checkForSimilarItems(String query) async {
@@ -285,10 +243,48 @@ class _ReportScreenState extends State<ReportScreen> {
           .ilike('title', '%$query%')
           .limit(3);
 
-      if (response.isNotEmpty) {
-        setState(() {
-          _similarItems = (response as List).map((e) => Item.fromMap(e)).toList();
-        });
+      final matches = (response as List).map((e) => Item.fromMap(e)).toList();
+
+      if (matches.isNotEmpty && mounted) {
+        showModalBottomSheet(
+          context: context,
+          builder: (ctx) => Container(
+            padding: const EdgeInsets.all(20),
+            height: 350,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: const [
+                    Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 30),
+                    SizedBox(width: 10),
+                    Text("Potential Matches Found!", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: matches.length,
+                    itemBuilder: (ctx, i) => Card(
+                      child: ListTile(
+                        title: Text(matches[i].title),
+                        subtitle: Text(matches[i].locationName),
+                        trailing: ElevatedButton(
+                          child: const Text("Check"),
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ItemDetailScreen(item: matches[i]))),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("No, these aren't mine. Continue reporting."),
+                )
+              ],
+            ),
+          ),
+        );
       }
     } catch (e) { debugPrint("Search Error: $e"); }
   }
@@ -306,15 +302,12 @@ class _ReportScreenState extends State<ReportScreen> {
     setState(() => _loading = true);
     
     try {
-      // 1. Check Service
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enable GPS for auto-location")));
         setState(() => _loading = false);
         return;
       }
 
-      // 2. Check Permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -324,7 +317,6 @@ class _ReportScreenState extends State<ReportScreen> {
         }
       }
 
-      // 3. Get Position
       Position pos = await Geolocator.getCurrentPosition();
       _lat = pos.latitude;
       _lng = pos.longitude;
@@ -334,10 +326,15 @@ class _ReportScreenState extends State<ReportScreen> {
         _locationController.text = "${places.first.name}, ${places.first.street}";
       }
       
+      // --- DIJKSTRA LOGIC: Find Nearest Faculty ---
       if (_type == 'found') {
         String nearestId = findNearestFacultyId(latLng.LatLng(pos.latitude, pos.longitude));
-        _suggestedDropOff = getFacultyName(nearestId);
+        setState(() {
+          _selectedFacultyId = nearestId; // Set the dropdown value
+        });
       }
+      // ---------------------------------------------
+
     } catch (e) {
       debugPrint("Location Error: $e");
     } finally {
@@ -357,17 +354,14 @@ class _ReportScreenState extends State<ReportScreen> {
         uploadedUrls.add(Supabase.instance.client.storage.from('images').getPublicUrl(path));
       }
 
-      // Security Logic
       List<String> options = [];
       String? answer;
       
       if (_type == 'found' && _questionController.text.isNotEmpty) {
         if (_isMultipleChoice) {
-          // Multiple Choice Mode
           options = _optionControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList();
           if (options.isNotEmpty) answer = options[_correctOptionIndex]; 
         } else {
-          // Text Input Mode (Empty options list signals "Open Ended")
           answer = _answerController.text.trim();
         }
       }
@@ -377,6 +371,12 @@ class _ReportScreenState extends State<ReportScreen> {
         final profile = await Supabase.instance.client.from('profiles').select('username').eq('id', user!.id).maybeSingle();
         if (profile != null) username = profile['username'] ?? "Anonymous";
       } catch (_) {}
+
+      // Get Faculty Name if selected
+      String? dropOffName;
+      if (_selectedFacultyId != null) {
+        dropOffName = getFacultyName(_selectedFacultyId!);
+      }
 
       await Supabase.instance.client.from('items').insert({
         'title': _titleController.text,
@@ -389,11 +389,9 @@ class _ReportScreenState extends State<ReportScreen> {
         'location_name': _locationController.text,
         'reported_by': user!.id,
         'reported_username': username,
-        'drop_off_node': _type == 'found' ? _suggestedDropOff : null,
-        
-        // Security Fields
+        'drop_off_node': dropOffName, // Stores "Faculty of Computer Science"
         'verification_question': _questionController.text.isEmpty ? null : _questionController.text,
-        'verification_options': options, // Empty list if text input
+        'verification_options': options,
         'verification_answer': answer,
       });
 
@@ -432,52 +430,6 @@ class _ReportScreenState extends State<ReportScreen> {
                     ),
                   ),
                 
-                // --- MATCHES ALERT WITH YES/NO ---
-                if (_similarItems.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.symmetric(vertical: 20),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.shade200)),
-                    child: Column(
-                      children: [
-                        const Text("Wait! Is one of these yours?", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 16)),
-                        const SizedBox(height: 10),
-                        ..._similarItems.map((item) => Card(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Column(
-                              children: [
-                                Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                Text(item.locationName, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                const SizedBox(height: 10),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    // NO BUTTON
-                                    TextButton.icon(
-                                      icon: const Icon(Icons.close, color: Colors.grey, size: 16),
-                                      label: const Text("No", style: TextStyle(color: Colors.grey)),
-                                      onPressed: () => setState(() => _similarItems.remove(item)),
-                                    ),
-                                    // YES BUTTON
-                                    ElevatedButton.icon(
-                                      icon: const Icon(Icons.check, size: 16),
-                                      label: const Text("Yes, Check It"),
-                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
-                                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ItemDetailScreen(item: item))),
-                                    ),
-                                  ],
-                                )
-                              ],
-                            ),
-                          ),
-                        )).toList()
-                      ],
-                    ),
-                  ),
-                // ------------------------------------
-
                 const SizedBox(height: 20),
                 _buildTextField("Item Name", _titleController),
                 const SizedBox(height: 10),
@@ -492,16 +444,46 @@ class _ReportScreenState extends State<ReportScreen> {
                 const SizedBox(height: 10),
                 _buildTextField("Location", _locationController, icon: Icons.map),
                 
-                // --- SECURITY QUESTION: TOGGLE MODE ---
+                // --- NEW: SMART FACULTY DROPDOWN ---
+                if (_type == 'found' && facultyNodes.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.green.shade300)
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: const [Icon(Icons.assistant_navigation, color: Colors.green), SizedBox(width: 10), Text("Drop-off Suggestion (Dijkstra)", style: TextStyle(fontWeight: FontWeight.bold))]),
+                        const SizedBox(height: 10),
+                        const Text("Select the faculty you will return this item to:"),
+                        const SizedBox(height: 5),
+                        DropdownButtonFormField<String>(
+                          value: _selectedFacultyId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(filled: true, fillColor: Colors.white, border: OutlineInputBorder()),
+                          items: facultyNodes.map((node) => DropdownMenuItem(
+                            value: node.id,
+                            child: Text(node.name, overflow: TextOverflow.ellipsis),
+                          )).toList(),
+                          onChanged: (v) => setState(() => _selectedFacultyId = v),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                // -----------------------------------
+
                 if (_type == 'found') ...[
                   const SizedBox(height: 30),
                   const Text("🔒 Security Question", style: TextStyle(fontWeight: FontWeight.bold)),
                   
-                  // Toggle Switch
                   Row(
                     children: [
                       const Text("Type: "),
-                      const SizedBox(width: 10),
                       ChoiceChip(
                         label: const Text("Multiple Choice"),
                         selected: _isMultipleChoice,
@@ -529,11 +511,9 @@ class _ReportScreenState extends State<ReportScreen> {
                       onChanged: (v) => setState(() => _correctOptionIndex = v as int),
                     )),
                   ] else ...[
-                    // Text Input Answer Field
                     _buildTextField("Correct Answer (Exact text)", _answerController),
                   ]
                 ],
-                // ----------------------------------------
 
                 const SizedBox(height: 30),
                 SizedBox(

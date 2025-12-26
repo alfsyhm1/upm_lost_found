@@ -1,22 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-
 import '../models/faculty_model.dart';
 import '../services/dijkstra_service.dart';
 
-class RouteMap extends StatefulWidget {
-  final String startId;
-  final String endId;
-
-  const RouteMap({super.key, required this.startId, required this.endId});
+class RouteMapScreen extends StatefulWidget {
+  final String destinationName;
+  const RouteMapScreen({super.key, required this.destinationName});
 
   @override
-  State<RouteMap> createState() => _RouteMapState();
+  State<RouteMapScreen> createState() => _RouteMapScreenState();
 }
 
-class _RouteMapState extends State<RouteMap> {
-  List<LatLng> pathPoints = [];
+class _RouteMapScreenState extends State<RouteMapScreen> {
+  final MapController _mapController = MapController();
+  List<LatLng> _routePoints = [];
 
   @override
   void initState() {
@@ -25,13 +23,17 @@ class _RouteMapState extends State<RouteMap> {
   }
 
   void _calculateRoute() {
-    // Get Dijkstra path (list of faculty IDs)
-    List<String> path = dijkstra(widget.startId, widget.endId);
+    FacultyNode? endNode;
+    try {
+      endNode = facultyNodes.firstWhere((n) => n.name == widget.destinationName);
+    } catch (_) { return; }
 
-    // Convert faculty IDs to coordinates
+    // Assume start at FSKTM for demo, or add geolocation logic here
+    List<String> pathIds = dijkstra("FSKTM", endNode.id);
+    
     setState(() {
-      pathPoints = path.map((id) {
-        final node = facultyNodes.firstWhere((f) => f.id == id);
+      _routePoints = pathIds.map((id) {
+        final node = facultyNodes.firstWhere((n) => n.id == id);
         return LatLng(node.latitude, node.longitude);
       }).toList();
     });
@@ -40,48 +42,14 @@ class _RouteMapState extends State<RouteMap> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Suggested Drop-off Route"),
-        backgroundColor: Colors.green.shade700,
-      ),
+      appBar: AppBar(title: const Text("Route to Faculty")),
       body: FlutterMap(
-        options: MapOptions(
-          initialCenter: LatLng(2.9926, 101.7079),
-          initialZoom: 15.0,
-        ),
+        mapController: _mapController,
+        options: MapOptions(initialCenter: const LatLng(2.9927, 101.7059), initialZoom: 15.0),
         children: [
-          TileLayer(
-            urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-            userAgentPackageName: 'com.upm.lostandfound',
-          ),
-          PolylineLayer(
-            polylines: [
-              Polyline(
-                points: pathPoints,
-                color: Colors.redAccent,
-                strokeWidth: 5.0,
-              ),
-            ],
-          ),
-          MarkerLayer(
-            markers: [
-              if (pathPoints.isNotEmpty)
-                Marker(
-                  point: pathPoints.first,
-                  width: 60,
-                  height: 60,
-                  child: const Icon(Icons.location_on,
-                      color: Colors.blue, size: 40),
-                ),
-              if (pathPoints.length > 1)
-                Marker(
-                  point: pathPoints.last,
-                  width: 60,
-                  height: 60,
-                  child: const Icon(Icons.flag, color: Colors.red, size: 40),
-                ),
-            ],
-          ),
+          TileLayer(urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png"),
+          PolylineLayer(polylines: [Polyline(points: _routePoints, strokeWidth: 5.0, color: Colors.blue)]),
+          MarkerLayer(markers: _routePoints.map((p) => Marker(point: p, child: const Icon(Icons.location_pin, color: Colors.red))).toList()),
         ],
       ),
     );
