@@ -1,20 +1,20 @@
 class Item {
-  final String id;
-  final String title;
-  final String description;
+  final String id; // unique id generated randomly
+  final String title; // title for the item
+  final String description; 
   final String type; // 'lost' or 'found'
   final List<String> imageUrls;
-  final String category;
+  final String category;  //the dropdown category
   final double? locationLat;
   final double? locationLng;
   final String locationName;
-  final String? dropOffNode;
+  final String? dropOffNode;  //fac name
   final String? contactNumber;
   final String? reportedBy;
   final String? reportedUsername;
   final String? verificationQuestion;
-  final List<String> verificationOptions; // <--- This was missing!
-  final String? verificationAnswer;
+  final List<String> verificationOptions; // security choices ["A", "B", "C"] 
+  final String? verificationAnswer; // secret correct answer
   final DateTime createdAt;
 
   Item({
@@ -32,13 +32,14 @@ class Item {
     this.reportedBy,
     this.reportedUsername,
     this.verificationQuestion,
-    required this.verificationOptions, // <--- Add to constructor
+    required this.verificationOptions, 
     this.verificationAnswer,
     required this.createdAt,
   });
 
   factory Item.fromMap(Map<String, dynamic> data) {
     return Item(
+      // getting data from supabase map, with null checks
       id: data['id']?.toString() ?? '',
       title: data['title'] ?? 'Unknown Item',
       description: data['description'] ?? '',
@@ -47,7 +48,7 @@ class Item {
           ? List<String>.from(data['image_urls']) 
           : (data['image_url'] != null ? [data['image_url']] : []), 
       category: data['category'] ?? 'Other',
-      locationLat: data['location_lat']?.toDouble(),
+      locationLat: data['location_lat']?.toDouble(),// convert to double from supabase, which may store as int
       locationLng: data['location_lng']?.toDouble(),
       locationName: data['location_name'] ?? '',
       dropOffNode: data['drop_off_node'],
@@ -56,7 +57,6 @@ class Item {
       reportedUsername: data['reported_username'],
       verificationQuestion: data['verification_question'],
       
-      // <--- Parse the options list safely:
       verificationOptions: data['verification_options'] != null 
           ? List<String>.from(data['verification_options']) 
           : [], 

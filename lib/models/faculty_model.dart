@@ -9,6 +9,7 @@ class FacultyNode {
 
 // Updated UPM Nodes with "Faculty of Science" and others
 final List<FacultyNode> facultyNodes = [
+  // each line creates one physical location of the faculty
   FacultyNode("FSKTM", "Fac. Computer Science (FSKTM)", 2.9927, 101.7059),
   FacultyNode("FP", "Fac. Agriculture (FP)", 2.9936, 101.7072),
   FacultyNode("FEP", "School of Business (FEP)", 2.9915, 101.7088),
