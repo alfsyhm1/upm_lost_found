@@ -3,13 +3,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class ChatScreen extends StatefulWidget {
-  final String otherUserId;
-  final String otherUserName;
-  final String? itemId;
-  final String? itemName; // <--- Added this to fix the error
+  final String otherUserId; // ID of the other user in the chat
+  final String otherUserName; // Name of the other user
+  final String? itemId; // ID of the item being discussed
+  final String? itemName; // <--- Added this to fix the error, title of the item being discussed
 
-  const ChatScreen({
-    super.key, 
+  const ChatScreen({  
+    super.key,  
     required this.otherUserId, 
     required this.otherUserName, 
     this.itemId,
@@ -17,33 +17,34 @@ class ChatScreen extends StatefulWidget {
   });
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  State<ChatScreen> createState() => _ChatScreenState();  // Create state for ChatScreen
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final _messageController = TextEditingController();
-  final _myId = Supabase.instance.client.auth.currentUser!.id;
-  late Stream<List<Map<String, dynamic>>> _messagesStream;
+  final _messageController = TextEditingController(); // Controller for message input
+  final _myId = Supabase.instance.client.auth.currentUser!.id;  // Current user's ID
+  late Stream<List<Map<String, dynamic>>> _messagesStream;  // Stream for messages
 
   @override
   void initState() {
-    super.initState();
-    _messagesStream = Supabase.instance.client
-        .from('messages')
-        .stream(primaryKey: ['id'])
+    super.initState();  // Initialize the messages stream
+    _messagesStream = Supabase.instance.client  // Initialize the messages stream
+        .from('messages') // Messages table
+        .stream(primaryKey: ['id']) // Primary key
         .order('created_at', ascending: false) // Newest messages at the bottom
-        .map((data) => data.where((msg) => 
-            (msg['sender_id'] == _myId && msg['receiver_id'] == widget.otherUserId) ||
-            (msg['sender_id'] == widget.otherUserId && msg['receiver_id'] == _myId)
+        .map((data) => data.where((msg) => // Filter messages between the two users
+            (msg['sender_id'] == _myId && msg['receiver_id'] == widget.otherUserId) ||  // messages sent by me
+            (msg['sender_id'] == widget.otherUserId && msg['receiver_id'] == _myId) // messages received by me
         ).toList());
   }
 
-  Future<void> _sendMessage() async {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-    _messageController.clear();
+  Future<void> _sendMessage() async { // Send message function
+    final text = _messageController.text.trim();  // Get and trim message text
+    if (text.isEmpty) return; // Do nothing if message is empty
+    _messageController.clear(); // Clear the input field
 
-    await Supabase.instance.client.from('messages').insert({
+    // Insert the new message into the database
+    await Supabase.instance.client.from('messages').insert({  // Insert into messages table
       'sender_id': _myId,
       'receiver_id': widget.otherUserId,
       'item_id': widget.itemId,
@@ -52,7 +53,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) {  // Build the chat screen UI
     return Scaffold(
       appBar: AppBar(title: Text(widget.otherUserName)),
       body: Column(

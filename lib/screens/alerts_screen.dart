@@ -7,9 +7,9 @@ class AlertsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final myId = Supabase.instance.client.auth.currentUser!.id;
+    final myId = Supabase.instance.client.auth.currentUser!.id; // acquiring the id of the user
 
-    // Fetch conversations (unique senders)
+    // Fetch conversations (unique senders) -- live conversations
     final stream = Supabase.instance.client
         .from('messages')
         .stream(primaryKey: ['id'])

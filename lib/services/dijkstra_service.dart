@@ -4,9 +4,9 @@ import '../models/faculty_model.dart';
 // Expanded Graph including Faculty of Science (FS)
 final Map<String, List<Edge>> graph = {
   "FSKTM": [Edge("FP", 0.5), Edge("Library", 0.6)],
-  "FP": [Edge("FSKTM", 0.5), Edge("FEP", 0.4), Edge("FS", 0.7)],
-  "FEP": [Edge("FP", 0.4), Edge("FPP", 0.6)],
-  "FPP": [Edge("FEP", 0.6), Edge("Library", 1.2)],
+  "FP": [Edge("FSKTM", 0.5), Edge("SBE", 0.4), Edge("FS", 0.7)],
+  "SBE": [Edge("FP", 0.4), Edge("FPP", 0.6)],
+  "FPP": [Edge("SBE", 0.6), Edge("Library", 1.2)],
   "Library": [Edge("FSKTM", 0.6), Edge("FS", 0.5), Edge("FPP", 1.2)],
   "FS": [Edge("FP", 0.7), Edge("Library", 0.5)], // New Connections
 };
