@@ -30,7 +30,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Color _brandRed = const Color(0xFFB30000);
 
   final List<String> _quickReplies = [
-    "Is this item still available?",
+    "Is this item still with you?",
     "I can pick it up today.",
     "Where exactly did you find it?",
     "Thank you so much!",
