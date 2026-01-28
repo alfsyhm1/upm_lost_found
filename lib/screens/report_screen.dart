@@ -48,30 +48,12 @@ class _ReportScreenState extends State<ReportScreen> {
 
   final List<String> _categories = ['Electronics', 'Clothing', 'Wallet', 'Keys', 'Documents', 'Accessories', 'Other'];
 
-  // Custom "Circle" Back Button
-  Widget _buildHeader() {
-    return Positioned(
-      top: 50, left: 20,
-      child: GestureDetector(
-        onTap: () => Navigator.pop(context),
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.white, 
-            shape: BoxShape.circle,
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 5)],
-          ),
-          child: const Icon(Icons.arrow_back, color: Colors.black, size: 24),
-        ),
-      ),
-    );
-  }
-
+  // --- STEP 1: SELECTION SCREEN ---
   Widget _buildSelectionStep() {
     return Scaffold(
       appBar: AppBar(
         title: const Text("New Report"),
-        automaticallyImplyLeading: false, // FIX: Removes the "other" back button
+        automaticallyImplyLeading: false, // Seamless: No back button
       ),
       body: Center(
         child: Column(
@@ -87,16 +69,6 @@ class _ReportScreenState extends State<ReportScreen> {
               ],
             ),
           ],
-        ),
-      ),
-      // Only show the custom back button here
-      floatingActionButtonLocation: FloatingActionButtonLocation.startTop,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: FloatingActionButton.small(
-          onPressed: () => Navigator.pop(context),
-          backgroundColor: Colors.white,
-          child: const Icon(Icons.arrow_back, color: Colors.black),
         ),
       ),
     );
@@ -200,7 +172,8 @@ class _ReportScreenState extends State<ReportScreen> {
 
     try {
       final inputImage = InputImage.fromFile(_images.first);
-      final labeler = ImageLabeler(options: ImageLabelerOptions(confidenceThreshold: 0.3));
+      // Increased confidence to reduce asphalt/floor false positives
+      final labeler = ImageLabeler(options: ImageLabelerOptions(confidenceThreshold: 0.5));
       final labels = await labeler.processImage(inputImage);
       labeler.close();
 
@@ -212,7 +185,11 @@ class _ReportScreenState extends State<ReportScreen> {
 
       setState(() => _loading = false);
 
-      final priorityKeywords = ['Key', 'Wallet', 'Phone', 'Laptop', 'Bag', 'Card', 'Passport', 'Watch', 'Headphones'];
+      // Expanded Priority List to catch common items over background
+      final priorityKeywords = [
+        'Key', 'Wallet', 'Phone', 'Laptop', 'Bag', 'Card', 'Passport', 
+        'Watch', 'Headphones', 'Bottle', 'Flask', 'Umbrella', 'Glasses', 'Pen', 'Pouch'
+      ];
       String detectedName = "Unknown Item";
       
       for (var label in labels) {
@@ -227,15 +204,19 @@ class _ReportScreenState extends State<ReportScreen> {
 
       if (!mounted) return;
 
-      // AI Confirmation Dialogs
-      String finalName = await _askAIQuestion("AI identified this as '$detectedName'. Is that correct?", detectedName);
+      // AI Confirmation Dialogs (With Cancel option)
+      String? finalName = await _askAIQuestion("AI identified this as '$detectedName'. Is that correct?", detectedName);
+      if (finalName == null) { setState(() => _loading = false); return; } // User Cancelled
+
       _titleController.text = finalName;
       _autoCategorize(finalName);
 
-      String finalColor = await _askAIQuestion("Is the main color '$colorInfo'?", colorInfo);
-      
+      String? finalColor = await _askAIQuestion("Is the main color '$colorInfo'?", colorInfo);
+      if (finalColor == null) { setState(() => _loading = false); return; }
+
       String tags = labels.take(5).map((l) => l.label).join(', ');
-      String finalDetails = await _askAIQuestion("AI found these details: '$tags'. Keep them?", tags);
+      String? finalDetails = await _askAIQuestion("AI found these details: '$tags'. Keep them?", tags);
+      if (finalDetails == null) { setState(() => _loading = false); return; }
 
       _descController.text = "Item: $finalName\nColor: $finalColor\nDetails: $finalDetails";
 
@@ -249,9 +230,9 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
-  Future<String> _askAIQuestion(String question, String initialValue) async {
+  Future<String?> _askAIQuestion(String question, String initialValue) async {
     String value = initialValue;
-    await showDialog(
+    return await showDialog<String>(
       barrierDismissible: false,
       context: context,
       builder: (ctx) {
@@ -276,6 +257,10 @@ class _ReportScreenState extends State<ReportScreen> {
                 ],
               ),
               actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, null), // Returns NULL on cancel
+                  child: const Text("Cancel & Exit", style: TextStyle(color: Colors.grey)),
+                ),
                 if (!isWrong)
                   TextButton(
                     onPressed: () => setDialogState(() => isWrong = true), 
@@ -284,7 +269,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 ElevatedButton(
                   onPressed: () {
                     if (isWrong && correctionCtrl.text.isNotEmpty) value = correctionCtrl.text;
-                    Navigator.pop(ctx);
+                    Navigator.pop(ctx, value);
                   },
                   child: const Text("Confirm"),
                 )
@@ -294,7 +279,6 @@ class _ReportScreenState extends State<ReportScreen> {
         );
       },
     );
-    return value;
   }
 
   Future<void> _checkForSimilarItems(String query) async {
@@ -353,7 +337,7 @@ class _ReportScreenState extends State<ReportScreen> {
       if (_type == 'found') {
         String nearestId = findNearestFacultyId(latLng.LatLng(pos.latitude, pos.longitude));
         setState(() {
-          _selectedFacultyId = nearestId; // Set default dropdown value
+          _selectedFacultyId = nearestId;
         });
       }
 
@@ -418,7 +402,7 @@ class _ReportScreenState extends State<ReportScreen> {
       });
 
       if (mounted) {
-        Navigator.pop(context);
+        setState(() { _currentStep = 0; _titleController.clear(); _descController.clear(); _images.clear(); });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Published!")));
       }
     } catch (e) {
@@ -432,10 +416,11 @@ class _ReportScreenState extends State<ReportScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F7),
+      appBar: AppBar(title: const Text("Report Details"), automaticallyImplyLeading: false),
       body: Stack(
         children: [
           _loading ? const Center(child: CircularProgressIndicator()) : SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 100, 20, 20),
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -591,7 +576,6 @@ class _ReportScreenState extends State<ReportScreen> {
               ],
             ),
           ),
-          _buildHeader(), // Custom back button
         ],
       ),
     );

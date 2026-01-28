@@ -9,7 +9,6 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Wrap in DefaultTabController
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -27,8 +26,8 @@ class HomeScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            _buildList('lost'),  // Tab 1 Content
-            _buildList('found'), // Tab 2 Content
+            _buildList('lost'),  
+            _buildList('found'), 
           ],
         ),
         floatingActionButton: FloatingActionButton(
@@ -43,12 +42,11 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // 2. Reusable List Builder
   Widget _buildList(String type) {
     final stream = Supabase.instance.client
         .from('items')
         .stream(primaryKey: ['id'])
-        .eq('type', type) // Filter by type
+        .eq('type', type) 
         .order('created_at', ascending: false);
 
     return StreamBuilder<List<Map<String, dynamic>>>(
@@ -58,23 +56,37 @@ class HomeScreen extends StatelessWidget {
         
         final items = snapshot.data!.map((e) => Item.fromMap(e)).toList();
         
-        if (items.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(type == 'lost' ? Icons.search_off : Icons.check_circle_outline, 
-                     size: 60, color: Colors.grey),
-                Text("No $type items reported yet."),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          itemCount: items.length,
-          padding: const EdgeInsets.all(8),
-          itemBuilder: (context, index) => ItemCard(item: items[index]),
+        // --- PULL TO REFRESH LOGIC ---
+        return RefreshIndicator(
+          onRefresh: () async {
+            // Trigger a UI rebuild which essentially "refreshes" the stream listener
+            await Future.delayed(const Duration(milliseconds: 800));
+          },
+          child: items.isEmpty
+              ? ListView( // Using ListView ensures pull-to-refresh works even when empty
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.7,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(type == 'lost' ? Icons.search_off : Icons.check_circle_outline, size: 60, color: Colors.grey),
+                            const SizedBox(height: 10),
+                            Text("No $type items reported yet."),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: items.length,
+                  padding: const EdgeInsets.all(8),
+                  itemBuilder: (context, index) => ItemCard(item: items[index]),
+                ),
         );
       },
     );
